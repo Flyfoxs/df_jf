@@ -88,7 +88,7 @@ def get_train_ex(wtid):
     template.set_index('ts', inplace=True)
     template.drop(columns='sn', errors='ignore', inplace=True)
 
-    logger.debug(f'template={template.shape}')
+    #logger.debug(f'template={template.shape}')
 
     train = train.combine_first(template)
 
@@ -105,31 +105,96 @@ def get_train_ex(wtid):
     return train
 
 
-def get_result(wtid, col, window=100):
+
+@file_cache()
+def get_missing_block_all():
+    """
+    wtid, col, begin, end
+    :return:
+    """
+    df = pd.DataFrame(columns=['wtid', 'col', 'begin', 'end'])
+    columns = list(date_type.keys())
+    columns.remove('wtid')
+    columns = sorted(columns)
+    for wtid in sorted(range(1, 34), reverse=True):
+        for col in columns:
+            for begin, end in get_missing_block_for_col(wtid, col):
+                df = df.append({'wtid':wtid, 'col':col,
+                                'begin':begin, 'end':end
+                                }, ignore_index=True)
+    return df
+
+@file_cache()
+def get_train_block_all():
+    missing = get_missing_block_all()
+    df_list = []
+    for wtid in range(1, 34):
+        for col in missing.col.drop_duplicates():
+            df_tmp = missing.loc[(missing.wtid == wtid) & (missing.col == col)]
+            missing_end = df_tmp.end.max()
+            df_tmp.sort_values('begin', inplace=True)
+            df_tmp['begin'], df_tmp['end'] = (df_tmp.end.shift(1) + 1).fillna(0), df_tmp.begin - 1
+
+            train_len = len(get_train_ex(wtid))
+
+            df_tmp = df_tmp.append({'wtid': wtid, 'col': col,
+                                    'begin': missing_end + 1,
+                                    'end': train_len - 1,
+                                    }, ignore_index=True)
+
+            #df_tmp.length = df_tmp.end - df_tmp.begin
+
+            df_list.append(df_tmp)
+
+    return pd.concat(df_list)
+
+
+def get_blocks():
+    train = get_train_block_all()
+
+    missing = get_missing_block_all()
+
+    train['kind'] = 'train'
+    missing['kind'] = 'missing'
+
+    all = pd.concat([train, missing])
+
+    all['length'] = all.end - all.begin +1
+
+    return all
+
+
+
+def get_missing_block_for_col(wtid, col, window=100):
     train = get_train_ex(wtid)
     missing_list = train[pd.isna(train[col])].index
 
     block_count = 0
     last_missing = 0
+    block_list = []
     for missing in missing_list:
         if missing <= last_missing:
             continue
 
         block_count += 1
-        begin, end, train = get_missing_block(wtid, col, missing, window)
+        begin, end, train = get_missing_block_single(wtid, col, missing, window)
+        block_list.append((begin, end))
+
         last_missing = end
 
 
-        msg =f'wtid={wtid:3},{col}#{block_count:2},length={1+end-begin:4},' \
+        msg =f'wtid={wtid:2},{col}#{block_count:2},length={1+end-begin:4},' \
                       f'begin={begin},' \
                       f'end={end},' \
                       f'missing={missing},'
         logger.debug(msg)
+    logger.debug(f'get {block_count:2} blocks for wtid:{wtid:2}#{col}, type:{date_type[col]}')
+
+    return block_list
 
 
 
-
-def get_missing_block(wtid, col, cur_missing, window=100):
+def get_missing_block_single(wtid, col, cur_missing, window=100):
     train = get_train_ex(wtid)
     begin = train[col].loc[:cur_missing].dropna().index.max() + 1
     end   = train[col].loc[cur_missing:].dropna().index.min() - 1
@@ -149,9 +214,11 @@ def get_missing_block(wtid, col, cur_missing, window=100):
 
 if __name__ == '__main__':
 
-    columns = list(date_type.keys())
-    columns.remove('wtid')
-    columns = sorted(columns)
-    for col in columns:
-        for wtid in range(1, 34):
-            get_result(wtid, col, 100)
+    # columns = list(date_type.keys())
+    # columns.remove('wtid')
+    # columns = sorted(columns)
+    # for wtid in sorted(range(1, 34), reverse=True):
+    #     for col in columns:
+    #         get_result(wtid, col, 100)
+
+    get_missing_block_all()
