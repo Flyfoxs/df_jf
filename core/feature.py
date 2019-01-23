@@ -148,7 +148,7 @@ def get_train_block_all():
 
     return pd.concat(df_list)
 
-
+@lru_cache()
 def get_blocks():
     train = get_train_block_all()
 
@@ -160,8 +160,8 @@ def get_blocks():
     all = pd.concat([train, missing])
 
     all['length'] = all.end - all.begin +1
-
-    return all
+    all.sort_values(['wtid','col','begin'], inplace=True)
+    return all.reset_index(drop=True)
 
 
 
@@ -209,7 +209,37 @@ def get_missing_block_single(wtid, col, cur_missing, window=100):
     return begin, end, train
 
 
+def get_train_feature(wtid, col, windows=100):
+    feature_list = []
 
+    block = get_blocks()
+
+    train_block = block.loc[(block.wtid == wtid) & (block.col == col) & (block.kind == 'train')]
+
+    missing_block = block.loc[(block.wtid == wtid) & (block.col == col) & (block.kind == 'missing')]
+
+    for missing in missing_block['length'].values:
+        cur_windows = max(windows, missing)
+        at_least_len = missing + 2 * cur_windows
+        logger.debug(
+            f'at_least_len={at_least_len}, window={cur_windows}, missing_len={missing} {train_block[train_block["length"]>=at_least_len].shape}')
+        for index, cur_block in (train_block[train_block['length'] >= at_least_len]).iterrows():
+            train = get_train_ex(wtid)
+            begin, end = cur_block.begin, cur_block.end
+            # Get the data without missing
+            block = train.iloc[begin:end + 1][['time_sn', col]]
+
+            block = block.reset_index(drop=True)
+
+            # only pick the latest data closed to training
+            block = block.iloc[-at_least_len:]
+            train_feature = pd.concat([block.iloc[:cur_windows], block.iloc[-cur_windows:]])
+            val_feature = block.iloc[cur_windows: -cur_windows]
+
+            feature_list.append((train_feature, val_feature))
+            logger.debug(f'Train:{train_feature.shape}, Val:{val_feature.shape}')
+
+    return feature_list
 
 
 if __name__ == '__main__':
