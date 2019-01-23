@@ -75,7 +75,7 @@ def get_sub_template():
     return template
 
 
-@lru_cache()
+@lru_cache(maxsize=2)
 def get_train_ex(wtid):
     wtid = str(wtid)
     train = pd.read_csv(f"./input/{wtid.rjust(3,'0')}/201807.csv", parse_dates=['ts'])
@@ -107,50 +107,41 @@ def get_train_ex(wtid):
 
 def get_result(wtid, col, window=100):
     train = get_train_ex(wtid)
-    train['loop'] = train.index
-
     missing_list = train[pd.isna(train[col])].index
 
-    train = train[[col, 'time_sn', 'loop']]
-
-    #train = train[~train.index.isin(missing_list)]
-
-    train = train.dropna(how='any')
-
-    train.reset_index(inplace=True, drop=True)
-
+    block_count = 0
+    last_missing = 0
     for missing in missing_list:
+        if missing <= last_missing:
+            continue
+
+        block_count += 1
+        begin, end, train = get_missing_block(wtid, col, missing, window)
+        last_missing = end
 
 
-        previous_index = train[(train.loop < missing) & pd.notnull(train[col])].index.max()
-
-        previous_index_original = train.iloc[previous_index]['loop']
-
-        train_begin = previous_index - window
-        train_end =   previous_index + window
-        train_sample = train.iloc[train_begin:train_end]
-
-        original_begin = int(train.iloc[train_begin]["loop"])
-        original_end = int(train.iloc[train_end]["loop"])
-        gap  = int(missing-previous_index_original)
-
-        if gap == 1 and missing!= missing_list[0]:
-            logger.debug(previous_msg)
-
-        previous_msg =f'{col}, begin={original_begin},' \
-                      f'previous={int(previous_index_original)}/{previous_index}, ' \
-                      f'missing={missing},  gap={gap}, ' \
-                      f'end={original_end}/{original_end - original_begin}, {train_sample.shape}'
-    logger.debug(previous_msg)
+        msg =f'wtid={wtid:3},{col}#{block_count:2},length={1+end-begin:4},' \
+                      f'begin={begin},' \
+                      f'end={end},' \
+                      f'missing={missing},'
+        logger.debug(msg)
 
 
 
 
+def get_missing_block(wtid, col, cur_missing, window=100):
+    train = get_train_ex(wtid)
+    begin = train[col].loc[:cur_missing].dropna().index.max() + 1
+    end   = train[col].loc[cur_missing:].dropna().index.min() - 1
 
+    train_col_list = [col, 'time_sn' ]
+    train_before = train[train_col_list].iloc[:begin].dropna(how='any').iloc[-window:]
 
-def get_original_sn(df, sn):
+    train_after = train[train_col_list].iloc[end+1:].dropna(how='any').iloc[:window]
 
-    return df.iloc[sn]['loop']
+    train = pd.concat([train_before, train_after])
+
+    return begin, end, train
 
 
 
@@ -158,7 +149,9 @@ def get_original_sn(df, sn):
 
 if __name__ == '__main__':
 
-    get_input_analysis('max')
-    get_input_analysis('min')
-    get_input_analysis('nunique')
-    get_input_analysis('missing')
+    columns = list(date_type.keys())
+    columns.remove('wtid')
+    columns = sorted(columns)
+    for col in columns:
+        for wtid in range(1, 34):
+            get_result(wtid, col, 100)
