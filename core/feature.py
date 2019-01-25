@@ -59,6 +59,7 @@ def get_analysis_enum():
 @file_cache()
 def get_sub_template():
     template = pd.read_csv('./input/template_submit_result.csv')
+    template.ts = pd.to_datetime(template.ts)
     template = template.set_index(['ts', 'wtid'])
 
     for wtid in range(1, 34):
@@ -264,6 +265,8 @@ def get_train_feature(wtid, col):
 
 def get_submit_feature_by_block_id(blockid):
     cur_block = get_blocks().iloc[blockid]
+    logger.debug(f'cur_block:\n{cur_block}')
+
     col_name = cur_block['col']
     wtid = cur_block['wtid']
     missing_length = cur_block['length']
@@ -274,13 +277,13 @@ def get_submit_feature_by_block_id(blockid):
 
     begin, end = cur_block.begin, cur_block.end
     # Get the data without missing
-    block = train.iloc[begin - cur_windows:end + cur_windows + 1][['time_sn', col_name]]
+    block = train.iloc[max(0,begin - cur_windows):end + cur_windows + 1][['time_sn', col_name]]
 
-    block = block.reset_index(drop=True)
+    #block = block.reset_index(drop=True)
 
     logger.debug(f'wtid:{wtid}, col:{col_name}, len:{len(block)}, std:{block[col_name].std():2.2f}, blockid:{blockid}')
-    train_feature = pd.concat([block.iloc[:cur_windows], block.iloc[-cur_windows:]])
-    val_feature = block.iloc[cur_windows: -cur_windows]
+    train_feature = block.dropna(how='any')
+    val_feature = block.loc[begin:end]
 
     logger.debug(f'original: {train_feature.shape}, {val_feature.shape}')
 
@@ -356,31 +359,11 @@ def check_std(wtid, col, windows=100):
     return summary_map
 
 
-def get_predict_fun(blockid, train):
-    block = get_blocks().iloc[blockid]
-
-    col_name = block['col']
-
-    wtid = block['wtid']
-
-    is_enum = True if 'int' in date_type[col_name].__name__ else False
-
-    if is_enum:
-        fn = lambda val: np.full_like(val, train[col_name].value_counts().index[0])
-    else:
-        w = np.polyfit(train.time_sn, train[col_name], 1)
-        fn = np.poly1d(w)
-    return fn
-
-
-def score(val1, val2, enum=False):
-    loss = 0
-    for real, predict in zip(val1, val2):
-        if enum:
-            loss += 1 if real == predict else 0
-        else:
-            loss += np.exp(-100 * abs(real - predict) / max(abs(real), 1e-15))
-    return len(val1), round(loss, 4)
+def convert_enum(df):
+    for col in df:
+        if col in date_type and 'int' in date_type[col].__name__:
+            df[col] = df[col].astype(int)
+    return df
 
 if __name__ == '__main__':
 
