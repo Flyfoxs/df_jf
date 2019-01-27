@@ -23,7 +23,8 @@ def get_predict_fun(blockid, train):
     is_enum = True if 'int' in date_type[col_name].__name__ else False
 
     if is_enum:
-        fn = lambda val: np.full_like(train[col_name], train[col_name].value_counts().index[0])
+
+        fn = lambda val: np.full_like(val.iloc[:,0], train[col_name].value_counts().index[0])
     else:
 
         from sklearn.linear_model import Ridge
@@ -41,20 +42,38 @@ def get_predict_fun(blockid, train):
 
     return fn
 
+def get_best_file_num(col_name):
+    score_df = check_score_all(version='0126')  # .reset_index()
+    score_df.columns = ['_'.join(col) for col in score_df.columns]
+    ser = score_df.iloc[:, -5:].idxmax(axis=1)
+    #print(ser.loc[col_name])
+    return int(ser.loc[col_name].split('_')[1])
+
+
+
+
 @file_cache()
-def predict_wtid(wtid):
+def predict_wtid(wtid, file_num):
     block_list = get_blocks()
 
     train_ex = get_train_ex(wtid)
     for blockid, missing_block in block_list.loc[
                 (block_list.wtid == wtid) & (block_list.kind == 'missing')].iterrows():
         col_name = missing_block.col
-        train, sub = get_submit_feature_by_block_id(blockid)
+
+        if file_num > 0:
+            cur_file_num = file_num
+        else:
+            cur_file_num = get_best_file_num(col_name)
+
+        logger.info(f'===Predict {col_name}#{blockid:2}, file_num:{cur_file_num}, type:{missing_block.data_type}, block:{missing_block}')
+        train, sub = get_submit_feature_by_block_id(blockid, cur_file_num)
 
         predict_fn = get_predict_fun(blockid, train)
-        predict_res = predict_fn(sub.time_sn)
+        predict_res = predict_fn(sub.iloc[:, 1:])
+        logger.debug(f'sub={sub.shape}, predict_res={predict_res.shape}, type={type(predict_res)}')
         sub[col_name] = predict_res
-        logger.debug(f'predict_res:{predict_res.shape}, {type(predict_res)}')
+
         begin, end = missing_block.begin, missing_block.end
 
         logger.debug(
@@ -70,12 +89,12 @@ def predict_wtid(wtid):
     return convert_enum(train_ex)
 
 @file_cache()
-def predict_all():
+def predict_all(version,file_count=0):
 
     train_list = []
     from tqdm import tqdm
     for wtid in tqdm(range(1, 34)):
-        train_ex =  predict_wtid(wtid)
+        train_ex =  predict_wtid(wtid,file_count)
         #train_ex = train_ex.set_index(['ts', 'wtid'])
         train_list.append(train_ex)
     train_all = pd.concat(train_list)#.set_index(['ts', 'wtid'])
@@ -94,23 +113,14 @@ def predict_all():
 
     submit = round(submit, 2)
 
-    logger.debug(f'Sub file save to {file}')
+    file = f'./output/submit_dynamic_file_{version}_{file_count}.csv'
+    submit = submit.iloc[:, :70]
+    submit.to_csv(file,index=None)
+
+    logger.debug(f'Sub({submit.shape}) file save to {file}')
 
     return submit
 
-
-@timed()
-def save_to_file(submit):
-    template = get_sub_template()
-    file = './output/submit_nan.csv'
-    submit = submit.where(pd.isna(template))
-
-
-    submit.ts = template.ts
-    submit.wtid = template.wtid
-
-
-    submit.to_csv(file,index=None)
 
 
 @timed()
@@ -196,9 +206,9 @@ if __name__ == '__main__':
     #logging.getLogger().setLevel(logging.INFO)
     #fire.Fire()
 
-    score_df = check_score_all(version='0126')
+    # score_df = check_score_all(version='0126')
 
 
-
+    submit = predict_all('0127_v2', 1)
 
 

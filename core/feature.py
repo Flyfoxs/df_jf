@@ -254,7 +254,7 @@ def get_train_feature(wtid, col, file_num):
                 train = get_train_ex(wtid)[[col, 'time_sn', ]]
             else:
                 train = get_train_feature_multi_file(wtid, col, file_num)
-            train = train.fillna(method='ffill')
+
             begin, end = cur_block.begin, cur_block.end
             # Get the data without missing
             block = train.iloc[begin:end + 1]
@@ -266,6 +266,7 @@ def get_train_feature(wtid, col, file_num):
 
             logger.debug(
                 f'wtid:{wtid}, col:{col}, len:{len(block)}, std:{block[col].std():2.2f}, block:[{end-at_least_len},{end}]')
+
             train_feature = pd.concat([block.iloc[:cur_windows], block.iloc[-cur_windows:]])
             val_feature = block.iloc[cur_windows: -cur_windows]
 
@@ -281,7 +282,8 @@ def get_train_feature(wtid, col, file_num):
     return feature_list
 
 
-def get_submit_feature_by_block_id(blockid):
+@timed()
+def get_submit_feature_by_block_id(blockid, file_num ):
     cur_block = get_blocks().iloc[blockid]
     logger.debug(f'cur_block:\n{cur_block}')
 
@@ -291,11 +293,14 @@ def get_submit_feature_by_block_id(blockid):
 
     cur_windows = round(missing_length * 0.7)
 
-    train = get_train_ex(wtid)
+    if file_num == 1:
+        train = get_train_ex(wtid)[[col_name, 'time_sn', ]]
+    else:
+        train = get_train_feature_multi_file(wtid, col_name, file_num)
 
     begin, end = cur_block.begin, cur_block.end
     # Get the data without missing
-    block = train.iloc[max(0,begin - cur_windows):end + cur_windows + 1][['time_sn', col_name]]
+    block = train.iloc[max(0,begin - cur_windows):end + cur_windows + 1]#[['time_sn', col_name]]
 
     #block = block.reset_index(drop=True)
 
@@ -313,6 +318,8 @@ def get_submit_feature_by_block_id(blockid):
 
     logger.debug(f'new(filter by time): {train_feature.shape}, {val_feature.shape}')
 
+    logger.debug(f'train_feature:{train_feature.columns}')
+    logger.debug(f'val_feature:{val_feature.columns}')
     return train_feature, val_feature
 
 
@@ -528,6 +535,7 @@ def get_train_feature_multi_file(wtid, col, file_num):
     col_list = [col for col in train.columns if 'var' in col]
     col_list.append('time_sn')
     train = train[col_list]
+    train.iloc[:,1:].fillna(method='ffill', inplace=True)
     return train
 
 
