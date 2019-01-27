@@ -6,6 +6,7 @@ vector_size=200
 from file_cache.utils.util_log import *
 import numpy as np
 
+cache_size = 64
 
 date_type={
 'wtid'	    :np.int16,
