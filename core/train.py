@@ -27,11 +27,11 @@ def get_predict_fun(blockid, train,):
         fn = lambda val: np.full_like(val.iloc[:,0], train[col_name].value_counts().index[0])
     else:
 
-        from sklearn.linear_model import Ridge
+        from sklearn.linear_model import Ridge, LinearRegression
 
         np.random.seed(0)
 
-        clf = Ridge(alpha=1.0)
+        clf = LinearRegression()
         train_X = train.iloc[:, 1:]
 #         if train.shape[1] == 1:
 #             train_X = np.expand_dims(train_X, axis=1)
@@ -43,7 +43,7 @@ def get_predict_fun(blockid, train,):
     return fn
 
 def get_best_file_num(col_name):
-    score_df = check_score_all(version='0126')  # .reset_index()
+    score_df = check_score_all(version='lg')  # .reset_index()
     score_df.columns = ['_'.join(col) for col in score_df.columns]
     ser = score_df.iloc[:, -5:].idxmax(axis=1)
     #print(ser.loc[col_name])
@@ -209,7 +209,10 @@ if __name__ == '__main__':
     # score_df = check_score_all(version='0126')
 
 
-    submit = predict_all('ridge_alpha_1', 0)
-    submit = predict_all('ridge_alpha_1', 1)
+
+    score = check_score_all(pic=False, version='lg')
+
+    submit = predict_all('0128_lg', 0)
+    submit = predict_all('0128_lg', 1)
 
 
