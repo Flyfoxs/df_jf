@@ -13,7 +13,7 @@ def score(val1, val2, enum=False):
 
 
 
-def get_predict_fun(blockid, train):
+def get_predict_fun(blockid, train,):
     block = get_blocks().iloc[blockid]
 
     col_name = block['col']
@@ -31,7 +31,7 @@ def get_predict_fun(blockid, train):
 
         np.random.seed(0)
 
-        clf = Ridge(alpha=100.0)
+        clf = Ridge(alpha=1.0)
         train_X = train.iloc[:, 1:]
 #         if train.shape[1] == 1:
 #             train_X = np.expand_dims(train_X, axis=1)
@@ -53,7 +53,7 @@ def get_best_file_num(col_name):
 
 
 @file_cache()
-def predict_wtid(wtid, file_num):
+def predict_wtid(version, wtid, file_num):
     block_list = get_blocks()
 
     train_ex = get_train_ex(wtid)
@@ -66,7 +66,7 @@ def predict_wtid(wtid, file_num):
         else:
             cur_file_num = get_best_file_num(col_name)
 
-        logger.info(f'===Predict {col_name}#{blockid:2}, file_num:{cur_file_num}, type:{missing_block.data_type}, block:{missing_block}')
+        logger.info(f'===Predict {wtid:2},{col_name},{blockid:6}, file_num:{cur_file_num}, type:{missing_block.data_type}')
         train, sub = get_submit_feature_by_block_id(blockid, cur_file_num)
 
         predict_fn = get_predict_fun(blockid, train)
@@ -94,7 +94,7 @@ def predict_all(version,file_count=0):
     train_list = []
     from tqdm import tqdm
     for wtid in tqdm(range(1, 34)):
-        train_ex =  predict_wtid(wtid,file_count)
+        train_ex =  predict_wtid(version, wtid,file_count)
         #train_ex = train_ex.set_index(['ts', 'wtid'])
         train_list.append(train_ex)
     train_all = pd.concat(train_list)#.set_index(['ts', 'wtid'])
@@ -209,6 +209,7 @@ if __name__ == '__main__':
     # score_df = check_score_all(version='0126')
 
 
-    submit = predict_all('0127_v2', 1)
+    submit = predict_all('ridge_alpha_1', 0)
+    submit = predict_all('ridge_alpha_1', 1)
 
 

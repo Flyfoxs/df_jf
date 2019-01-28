@@ -1,0 +1,9 @@
+- Value_counts over half of the data
+- gassuin procedure
+- polynomial(2, 3, 4)
+- Neural network
+- local file & related file
+- time_sn add in
+- find another way to determind if use multiply file
+- Separator begin, middle, end
+- Analysis the value_count for begin and end
