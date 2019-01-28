@@ -12,33 +12,63 @@ def score(val1, val2, enum=False):
     return len(val1), round(loss, 4)
 
 
+def predict_stable_col(train, val, threshold=0.5):
+    cur_ratio = train.iloc[:, 0].value_counts().iloc[:2].sum()/len(train)
+
+    if cur_ratio >  threshold:
+        half = len(train)//2
+
+        val_1 = train.iloc[:half, 0].value_counts().index[0]
+        res_1 = np.ones(len(val)//2)*val_1
+
+        val_2 = train.iloc[half:, 0].value_counts().index[0]
+        res_2 = np.ones(len(val) - (len(val)//2)) * val_2
+
+        return np.hstack((res_1, res_2))
+    else:
+        logger.error(f'Cur ration is {cur_ratio}, threshold: {threshold}')
+        return None
+
+
+def get_cut_predict(train, val, cut_len):
+    from sklearn.linear_model import Ridge, LinearRegression
+    clf = LinearRegression()
+    np.random.seed(0)
+    clf.fit(train.iloc[:, 1:], train.iloc[:, 0])
+
+    if isinstance(val, pd.DataFrame):
+
+        cut_len = min(cut_len, len(val)//3)
+
+        logger.debug(val)
+        logger.debug(val.shape)
+        logger.debug(val.columns)
+
+        block_begin = val.index.min()
+        block_end = val.index.max()
+
+        begin_val=train.iloc[:, 0].loc[:(block_begin - 1)].tail(1).iat[0]
+        end_val = train.iloc[:, 0].loc[(block_end + 1):].iat[0]
+
+        return np.hstack((np.ones(cut_len) * begin_val,
+                          clf.predict(val.iloc[cut_len:len(val)-cut_len]),
+                          np.ones(cut_len) * end_val
+                          ))
+    else:
+        return clf.predict(val)
+
 
 def get_predict_fun(blockid, train,):
     block = get_blocks().iloc[blockid]
 
     col_name = block['col']
 
-    wtid = block['wtid']
-
     is_enum = True if 'int' in date_type[col_name].__name__ else False
 
     if is_enum:
-
-        fn = lambda val: np.full_like(val.iloc[:,0], train[col_name].value_counts().index[0])
+        fn = lambda val: predict_stable_col(train, val, 0)
     else:
-
-        from sklearn.linear_model import Ridge, LinearRegression
-
-        np.random.seed(0)
-
-        clf = LinearRegression()
-        train_X = train.iloc[:, 1:]
-#         if train.shape[1] == 1:
-#             train_X = np.expand_dims(train_X, axis=1)
-#         print(train_X.shape)
-#         print(train[col_name].shape)
-        clf.fit(train_X, train[col_name])
-        fn = clf.predict
+        fn = lambda val : get_cut_predict(train, val, 100)
 
     return fn
 
@@ -171,7 +201,7 @@ def check_score(col, pic, file_num):
 
         is_enum = True if 'int' in date_type[col].__name__ else False
 
-        fn = get_predict_fun(blockid, train)
+        check_fn = get_predict_fun(blockid, train)
 
         if pic:
             plt.figure(figsize=(20, 5))
@@ -179,10 +209,10 @@ def check_score(col, pic, file_num):
                 plt.scatter(data.time_sn, data[col], c=color)
 
             x = np.linspace(train.time_sn.min(), train.time_sn.max(), 10000)
-            plt.plot(x, fn(x))
+            plt.plot(x, check_fn(x))
             plt.show()
 
-        val_res = fn(train.iloc[:, 1:])
+        val_res = check_fn(train.iloc[:, 1:])
         logger.debug(f'shape of predict output {val_res.shape}, with paras:{args}')
         cur_count, cur_loss = score(val[col], val_res, is_enum)
 
@@ -210,7 +240,7 @@ if __name__ == '__main__':
 
 
 
-    score = check_score_all(pic=False, version='lg')
+    score_df = check_score_all(pic=False, version='lg')
 
     submit = predict_all('0128_lg', 0)
     submit = predict_all('0128_lg', 1)
