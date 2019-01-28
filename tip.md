@@ -7,3 +7,4 @@
 - find another way to determind if use multiply file
 - Separator begin, middle, end
 - Analysis the value_count for begin and end
+- Avg the value

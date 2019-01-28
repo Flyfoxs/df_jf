@@ -232,7 +232,7 @@ def get_missing_block_single(wtid, col, cur_missing, window=100):
     return begin, end, train
 
 
-def get_train_feature(wtid, col, file_num):
+def get_train_feature(wtid, col, args):
     feature_list = []
 
     block = get_blocks()
@@ -242,7 +242,7 @@ def get_train_feature(wtid, col, file_num):
     missing_block = block.loc[(block.wtid == wtid) & (block.col == col) & (block.kind == 'missing')]
 
     for missing_length in missing_block['length'].sort_values().values:
-        if file_num==1:
+        if args.file_num==1:
             cur_windows = round(missing_length * 0.7)
         else:
             cur_windows = missing_length * 2
@@ -250,10 +250,10 @@ def get_train_feature(wtid, col, file_num):
         logger.debug(
             f'at_least_len={at_least_len}, window={cur_windows}, missing_len={missing_length} {train_block[train_block["length"]>=at_least_len].shape}')
         for index, cur_block in (train_block[train_block['length'] >= at_least_len]).iterrows():
-            if file_num==1:
+            if args.file_num==1:
                 train = get_train_ex(wtid)[[col, 'time_sn', ]]
             else:
-                train = get_train_feature_multi_file(wtid, col, file_num)
+                train = get_train_feature_multi_file(wtid, col, args)
 
             begin, end = cur_block.begin, cur_block.end
             # Get the data without missing
@@ -283,7 +283,7 @@ def get_train_feature(wtid, col, file_num):
 
 
 @timed()
-def get_submit_feature_by_block_id(blockid, file_num ):
+def get_submit_feature_by_block_id(blockid, args ):
     cur_block = get_blocks().iloc[blockid]
     logger.debug(f'cur_block:\n{cur_block}')
 
@@ -293,10 +293,10 @@ def get_submit_feature_by_block_id(blockid, file_num ):
 
     cur_windows = round(missing_length * 0.7)
 
-    if file_num == 1:
+    if args.file_num == 1:
         train = get_train_ex(wtid)[[col_name, 'time_sn', ]]
     else:
-        train = get_train_feature_multi_file(wtid, col_name, file_num)
+        train = get_train_feature_multi_file(wtid, col_name, args)
 
     begin, end = cur_block.begin, cur_block.end
     # Get the data without missing
@@ -514,11 +514,10 @@ def get_corr_wtid(col_name):
     return cor
 
 
-@lru_cache()
-def get_train_feature_multi_file(wtid, col, file_num):
+def get_train_feature_multi_file(wtid, col, args):
 
     cor = get_corr_wtid(col)
-    related_wtid_list = cor[f'{col}_{wtid}'].sort_values(ascending=False)[1:file_num]
+    related_wtid_list = cor[f'{col}_{wtid}'].sort_values(ascending=False)[1:args.file_num]
     logger.info(f'The top relate file/corr for wtid:{wtid}, col:{col} is \n {related_wtid_list}')
     related_wtid_list = [int(col.split('_')[1]) for col in related_wtid_list.index]
 

@@ -40,12 +40,12 @@ def get_cut_predict(train, val, cut_len):
 
         cut_len = min(cut_len, len(val)//3)
 
-        logger.debug(val)
-        logger.debug(val.shape)
-        logger.debug(val.columns)
 
         block_begin = val.index.min()
         block_end = val.index.max()
+        logger.debug(f'val block:[{block_begin}, {block_end}], {val.columns}')
+
+        logger.debug(f'train:{train.shape}, val{val.shape}')
 
         begin_val=train.iloc[:, 0].loc[:(block_begin - 1)].tail(1).iat[0]
         end_val = train.iloc[:, 0].loc[(block_end + 1):].iat[0]
@@ -58,7 +58,7 @@ def get_cut_predict(train, val, cut_len):
         return clf.predict(val)
 
 
-def get_predict_fun(blockid, train,):
+def get_predict_fun(blockid, train, args):
     block = get_blocks().iloc[blockid]
 
     col_name = block['col']
@@ -68,12 +68,12 @@ def get_predict_fun(blockid, train,):
     if is_enum:
         fn = lambda val: predict_stable_col(train, val, 0)
     else:
-        fn = lambda val : get_cut_predict(train, val, 100)
+        fn = lambda val : get_cut_predict(train, val, args.cut_len)
 
     return fn
 
-def get_best_file_num(col_name):
-    score_df = check_score_all(version='lg')  # .reset_index()
+def get_best_file_num(args, col_name):
+    score_df = check_score_all(args, pic=False)  # .reset_index()
     score_df.columns = ['_'.join(col) for col in score_df.columns]
     ser = score_df.iloc[:, -5:].idxmax(axis=1)
     #print(ser.loc[col_name])
@@ -83,7 +83,7 @@ def get_best_file_num(col_name):
 
 
 @file_cache()
-def predict_wtid(version, wtid, file_num):
+def predict_wtid(version, wtid, args):
     block_list = get_blocks()
 
     train_ex = get_train_ex(wtid)
@@ -91,15 +91,15 @@ def predict_wtid(version, wtid, file_num):
                 (block_list.wtid == wtid) & (block_list.kind == 'missing')].iterrows():
         col_name = missing_block.col
 
-        if file_num > 0:
-            cur_file_num = file_num
+        if args.file_num > 0:
+            cur_file_num = args.file_num
         else:
-            cur_file_num = get_best_file_num(col_name)
+            cur_file_num = get_best_file_num(args,col_name)
 
         logger.info(f'===Predict {wtid:2},{col_name},{blockid:6}, file_num:{cur_file_num}, type:{missing_block.data_type}')
-        train, sub = get_submit_feature_by_block_id(blockid, cur_file_num)
+        train, sub = get_submit_feature_by_block_id(blockid, args)
 
-        predict_fn = get_predict_fun(blockid, train)
+        predict_fn = get_predict_fun(blockid, train, args)
         predict_res = predict_fn(sub.iloc[:, 1:])
         logger.debug(f'sub={sub.shape}, predict_res={predict_res.shape}, type={type(predict_res)}')
         sub[col_name] = predict_res
@@ -119,12 +119,12 @@ def predict_wtid(version, wtid, file_num):
     return convert_enum(train_ex)
 
 @file_cache()
-def predict_all(version,file_count=0):
+def predict_all(version,args, score_avg):
 
     train_list = []
     from tqdm import tqdm
     for wtid in tqdm(range(1, 34)):
-        train_ex =  predict_wtid(version, wtid,file_count)
+        train_ex =  predict_wtid(version, wtid, args)
         #train_ex = train_ex.set_index(['ts', 'wtid'])
         train_list.append(train_ex)
     train_all = pd.concat(train_list)#.set_index(['ts', 'wtid'])
@@ -143,7 +143,7 @@ def predict_all(version,file_count=0):
 
     submit = round(submit, 2)
 
-    file = f'./output/submit_dynamic_file_{version}_{file_count}.csv'
+    file = f'./output/submit_dynamic_file_{version}_{file_count}_{score_avg}.csv'
     submit = submit.iloc[:, :70]
     submit.to_csv(file,index=None)
 
@@ -154,8 +154,9 @@ def predict_all(version,file_count=0):
 
 
 @timed()
-@file_cache(overwrite=False)
-def check_score_all(pic=False, version='0125'):
+
+@file_cache()
+def check_score_all(args, pic=False):
     std = get_std_all()
     std = std.groupby(['col', 'data_type']).agg({'mean': ['mean', 'min', 'max', 'std']})
     std = std.reset_index().set_index('col')
@@ -178,18 +179,18 @@ def check_score_all(pic=False, version='0125'):
         std.loc[col, 'coef_wtid_id'] = corr.where(corr < 0.999).max().idxmax()
 
         for file_num in range(1, 6):
-            loss = check_score(col, pic, file_num)
+            loss = check_score(col, pic, args)
             std.loc[col, f'score_{file_num}_file'] = loss
 
     return std.sort_values('score_1_file')
 
 
-def check_score(col, pic, file_num):
-    args = locals()
+def check_score(col, pic, args):
+    local_args = locals()
     logging.getLogger().setLevel(logging.INFO)
     import matplotlib.pyplot as plt
 
-    train_list = get_train_feature(3, col, file_num)
+    train_list = get_train_feature(3, col, args)
 
     train_list = sorted(train_list, key=lambda val: len(val[1]), reverse=True)
 
@@ -201,7 +202,7 @@ def check_score(col, pic, file_num):
 
         is_enum = True if 'int' in date_type[col].__name__ else False
 
-        check_fn = get_predict_fun(blockid, train)
+        check_fn = get_predict_fun(blockid, train, args)
 
         if pic:
             plt.figure(figsize=(20, 5))
@@ -212,8 +213,8 @@ def check_score(col, pic, file_num):
             plt.plot(x, check_fn(x))
             plt.show()
 
-        val_res = check_fn(train.iloc[:, 1:])
-        logger.debug(f'shape of predict output {val_res.shape}, with paras:{args}')
+        val_res = check_fn(val.iloc[:, 1:])
+        logger.debug(f'shape of predict output {val_res.shape}, with paras:{local_args}')
         cur_count, cur_loss = score(val[col], val_res, is_enum)
 
         loss += cur_loss
@@ -238,11 +239,24 @@ if __name__ == '__main__':
 
     # score_df = check_score_all(version='0126')
 
+    import argparse
+    parser = argparse.ArgumentParser()
 
+    parser.add_argument("--file_num", help="How many files need to merge to train set", type=int, default=1)
+    parser.add_argument("--cut_len", help="Cut the begin, end to ffill", type=int, default=100)
+    parser.add_argument("--top_threshold", help="If the top#2 arrive ?%, then just use ffile", type=float, default=0.6)
+    #parser.add_argument("--version", help="check version", type=str, default='lg')
+    args = parser.parse_args()
 
-    score_df = check_score_all(pic=False, version='lg')
+    logger.info(f'Program input:{args}')
 
-    submit = predict_all('0128_lg', 0)
-    submit = predict_all('0128_lg', 1)
+    score_df = check_score_all(args, pic=False)
+
+    score_df = pd.read_hdf('./cache/check_score_all==version=lg.h5')
+
+    score_avg = round(score_df.iloc[:, -5].mean(), 4), round(score_df.iloc[:, -5:].max(axis=1).mean(), 4)
+
+    submit = predict_all('cut_lg', args, '_'.join(score_avg))
+    #submit = predict_all('0128_lg', args)
 
 
