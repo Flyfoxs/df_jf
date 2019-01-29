@@ -80,7 +80,9 @@ def get_sub_template():
     return template
 
 
+
 @lru_cache(maxsize=cache_size)
+@timed()
 def get_train_ex(wtid):
     wtid = str(wtid)
     train = pd.read_csv(f"./input/{wtid.rjust(3,'0')}/201807.csv", parse_dates=['ts'])
@@ -248,12 +250,12 @@ def get_train_feature(wtid, col, args):
             cur_windows = missing_length * 2
         at_least_len = missing_length + 2 * cur_windows
         logger.debug(
-            f'at_least_len={at_least_len}, window={cur_windows}, missing_len={missing_length} {train_block[train_block["length"]>=at_least_len].shape}')
+            f'file_num={args.file_num}, at_least_len={at_least_len}, window={cur_windows}, missing_len={missing_length} {train_block[train_block["length"]>=at_least_len].shape}')
         for index, cur_block in (train_block[train_block['length'] >= at_least_len]).iterrows():
             if args.file_num==1:
                 train = get_train_ex(wtid)[[col, 'time_sn', ]]
             else:
-                train = get_train_feature_multi_file(wtid, col, args)
+                train = get_train_feature_multi_file(wtid, col, args.file_num)
 
             begin, end = cur_block.begin, cur_block.end
             # Get the data without missing
@@ -264,8 +266,8 @@ def get_train_feature(wtid, col, args):
             # only pick the latest data closed to training
             block = block.iloc[-at_least_len:]
 
-            logger.debug(
-                f'wtid:{wtid}, col:{col}, len:{len(block)}, std:{block[col].std():2.2f}, block:[{end-at_least_len},{end}]')
+            # logger.debug(
+            #     f'wtid:{wtid}, col:{col}, len:{len(block)}, std:{block[col].std():2.2f}, block:[{end-at_least_len},{end}]')
 
             train_feature = pd.concat([block.iloc[:cur_windows], block.iloc[-cur_windows:]])
             val_feature = block.iloc[cur_windows: -cur_windows]
@@ -283,7 +285,7 @@ def get_train_feature(wtid, col, args):
 
 
 @timed()
-def get_submit_feature_by_block_id(blockid, args ):
+def get_submit_feature_by_block_id(blockid, cur_file_num ):
     cur_block = get_blocks().iloc[blockid]
     logger.debug(f'cur_block:\n{cur_block}')
 
@@ -293,10 +295,10 @@ def get_submit_feature_by_block_id(blockid, args ):
 
     cur_windows = round(missing_length * 0.7)
 
-    if args.file_num == 1:
+    if cur_file_num == 1:
         train = get_train_ex(wtid)[[col_name, 'time_sn', ]]
     else:
-        train = get_train_feature_multi_file(wtid, col_name, args)
+        train = get_train_feature_multi_file(wtid, col_name, cur_file_num)
 
     begin, end = cur_block.begin, cur_block.end
     # Get the data without missing
@@ -384,20 +386,20 @@ def convert_enum(df):
             df[col] = df[col].astype(int)
     return df
 
-
-@timed()
-def group_columns(wtid=1):
-    col_list = get_blocks().col.drop_duplicates()
-    existing = []
-    gp_list = []
-    for col in col_list:
-        if col in existing:
-            continue
-        gp = get_closed_columns(col, wtid)
-        gp = list(gp.values)
-        existing.extend(gp)
-        gp_list.append(gp)
-    return sorted(gp_list, key=lambda val: len(val), reverse=True )
+#
+# @timed()
+# def group_columns(wtid=1):
+#     col_list = get_blocks().col.drop_duplicates()
+#     existing = []
+#     gp_list = []
+#     for col in col_list:
+#         if col in existing:
+#             continue
+#         gp = get_closed_columns(col, wtid)
+#         gp = list(gp.values)
+#         existing.extend(gp)
+#         gp_list.append(gp)
+#     return sorted(gp_list, key=lambda val: len(val), reverse=True )
 
 
 # @file_cache()
@@ -450,27 +452,27 @@ def get_pure_block_list(kind='data'):
 
     return df
 
-
-@lru_cache()
-@file_cache()
-def adjust_block(ratio=0.8):
-    block = get_blocks()
-    block['begin_ex'] = block.begin
-    block['end_ex'] = block.end
-
-    data_block = get_pure_block_list(kind='data')
-
-    wtid_list = range(1, 5)
-    for wtid in wtid_list:
-        for index, row in data_block.loc[data_block.wtid == wtid].iterrows():
-            end = row.end
-            length = row.length
-            # logger.info(f"block.loc[(block.begin >= end) & (block.wtid==wtid) , 'begin_ex']={block.loc[(block.begin >= end) & (block.wtid==wtid) , 'begin_ex'].shape}")
-            block.loc[(block.begin >= end) & (block.wtid == wtid), 'begin_ex'] = block.loc[(block.begin >= end) & (
-            block.wtid == wtid), 'begin_ex'] - ratio * length
-            block.loc[(block.begin >= end) & (block.wtid == wtid), 'end_ex'] = block.loc[(block.begin >= end) & (
-            block.wtid == wtid), 'end_ex'] - ratio * length
-    return block.loc[block.wtid.isin(wtid_list)]
+#
+# @lru_cache()
+# @file_cache()
+# def adjust_block(ratio=0.8):
+#     block = get_blocks()
+#     block['begin_ex'] = block.begin
+#     block['end_ex'] = block.end
+#
+#     data_block = get_pure_block_list(kind='data')
+#
+#     wtid_list = range(1, 5)
+#     for wtid in wtid_list:
+#         for index, row in data_block.loc[data_block.wtid == wtid].iterrows():
+#             end = row.end
+#             length = row.length
+#             # logger.info(f"block.loc[(block.begin >= end) & (block.wtid==wtid) , 'begin_ex']={block.loc[(block.begin >= end) & (block.wtid==wtid) , 'begin_ex'].shape}")
+#             block.loc[(block.begin >= end) & (block.wtid == wtid), 'begin_ex'] = block.loc[(block.begin >= end) & (
+#             block.wtid == wtid), 'begin_ex'] - ratio * length
+#             block.loc[(block.begin >= end) & (block.wtid == wtid), 'end_ex'] = block.loc[(block.begin >= end) & (
+#             block.wtid == wtid), 'end_ex'] - ratio * length
+#     return block.loc[block.wtid.isin(wtid_list)]
 
 
 def get_train_rename(wtid, col_name, key=None):
@@ -514,13 +516,17 @@ def get_corr_wtid(col_name):
     return cor
 
 
-def get_train_feature_multi_file(wtid, col, args):
+@lru_cache(maxsize=2)
+@timed()
+def get_train_feature_multi_file(wtid, col, file_num):
+    if file_num <=1:
+        raise Exception(f'file_num should be large then 1, cur file_num is {file_num}')
 
     cor = get_corr_wtid(col)
-    related_wtid_list = cor[f'{col}_{wtid}'].sort_values(ascending=False)[1:args.file_num]
-    logger.info(f'The top relate file/corr for wtid:{wtid}, col:{col} is \n {related_wtid_list}')
+    related_wtid_list = cor[f'{col}_{wtid}'].sort_values(ascending=False)[1:file_num]
+    logger.info(f'The top#{file_num} files for wtid:{wtid}, col:{col} is '
+                f'{dict(zip(related_wtid_list.index,np.round(related_wtid_list.values,3)))}')
     related_wtid_list = [int(col.split('_')[1]) for col in related_wtid_list.index]
-
 
     train = get_train_rename(wtid, col)
     train.rename(columns={f'{col}_{wtid}':col}, inplace=True)
@@ -537,6 +543,26 @@ def get_train_feature_multi_file(wtid, col, args):
     train.iloc[:,1:].fillna(method='ffill', inplace=True)
     return train
 
+
+def options():
+    import argparse
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("--file_num", help="How many files need to merge to train set", type=int, default=1)
+    parser.add_argument("--cut_len", help="Cut the begin, end to ffill", type=int, default=100)
+    parser.add_argument("--top_threshold", help="If the top#2 arrive ?%, then just use ffile", type=float, default=0.6)
+    parser.add_argument("-D", '--debug', action='store_false')
+    parser.add_argument('--version', type=str, default='0129')
+
+    # parser.add_argument("--version", help="check version", type=str, default='lg')
+    args = parser.parse_args()
+
+    if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+    else:
+        logging.getLogger().setLevel(logging.INFO)
+
+    return args
 
 if __name__ == '__main__':
 
