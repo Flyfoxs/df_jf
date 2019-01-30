@@ -72,11 +72,13 @@ def get_predict_fun(blockid, train, args):
 
     return fn
 
+@lru_cache()
 def get_best_file_num(col_name):
     score_df = check_score_all(pic=False)  # .reset_index()
-    score_df.columns = ['_'.join(col) for col in score_df.columns]
+
     ser = score_df.iloc[:, -5:].idxmax(axis=1)
     #print(ser.loc[col_name])
+    logger.debug(ser)
     return int(ser.loc[col_name].split('_')[1])
 
 
@@ -94,9 +96,9 @@ def predict_wtid(wtid, args):
         if args.file_num > 0:
             cur_file_num = args.file_num
         else:
-            cur_file_num = get_best_file_num(args,col_name)
+            cur_file_num = get_best_file_num(col_name)
 
-        logger.info(f'===Predict wtid:{wtid:2},{col_name},blockid:{blockid:6}, file_num:{cur_file_num}, type:{missing_block.data_type}')
+        logger.info(f'===Predict wtid:{wtid:2},{col_name},blockid:{blockid:6}, best_file_num:{cur_file_num}, type:{missing_block.data_type}')
         train, sub = get_submit_feature_by_block_id(blockid, cur_file_num)
 
         predict_fn = get_predict_fun(blockid, train, args)
@@ -148,7 +150,7 @@ def predict_all(version):
     submit = submit.iloc[:, :70]
     submit.to_csv(file,index=None)
 
-    logger.debug(f'Sub({submit.shape}) file save to {file}')
+    logger.info(f'Sub({submit.shape}) file save to {file}')
 
     return submit
 
@@ -184,12 +186,13 @@ def check_score_all(pic=False):
             loss = check_score(col, pic, args)
             std.loc[col, f'score_{file_num}_file'] = loss
 
-    return std.sort_values('score_1_file')
+    score_df= std.sort_values('score_1_file')
+    score_df.columns = ['_'.join(col) for col in score_df.columns]
+    return score_df
 
 
 def check_score(col, pic, args):
     local_args = locals()
-    logging.getLogger().setLevel(logging.INFO)
     import matplotlib.pyplot as plt
     wtid = 3
     train_list = get_train_feature(wtid, col, args)
@@ -236,7 +239,6 @@ if __name__ == '__main__':
     python core/train.py predict_wtid 1
 
     """
-    #logging.getLogger().setLevel(logging.INFO)
     #fire.Fire()
 
     # score_df = check_score_all(version='0126')

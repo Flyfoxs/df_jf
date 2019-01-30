@@ -250,7 +250,7 @@ def get_train_feature(wtid, col, args):
             cur_windows = missing_length * 2
         at_least_len = missing_length + 2 * cur_windows
         logger.debug(
-            f'file_num={args.file_num}, at_least_len={at_least_len}, window={cur_windows}, missing_len={missing_length} {train_block[train_block["length"]>=at_least_len].shape}')
+            f'get_train_feature:file_num={args.file_num}, at_least_len={at_least_len}, window={cur_windows}, missing_len={missing_length} {train_block[train_block["length"]>=at_least_len].shape}')
         for index, cur_block in (train_block[train_block['length'] >= at_least_len]).iterrows():
             if args.file_num==1:
                 train = get_train_ex(wtid)[[col, 'time_sn', ]]
@@ -306,7 +306,8 @@ def get_submit_feature_by_block_id(blockid, cur_file_num ):
 
     #block = block.reset_index(drop=True)
 
-    logger.debug(f'wtid:{wtid}, col:{col_name}, len:{len(block)}, std:{block[col_name].std():2.2f}, blockid:{blockid}')
+    logger.debug(f'wtid:{wtid}, col:{col_name}, file_num:{cur_file_num}, len:{len(block)}, std:{block[col_name].std():2.2f}, blockid:{blockid}')
+    logger.debug(f'Train columns:{train.columns}')
     train_feature = block.dropna(how='any')
     val_feature = block.loc[begin:end]
 
@@ -551,7 +552,7 @@ def options():
     parser.add_argument("--file_num", help="How many files need to merge to train set", type=int, default=1)
     parser.add_argument("--cut_len", help="Cut the begin, end to ffill", type=int, default=100)
     parser.add_argument("--top_threshold", help="If the top#2 arrive ?%, then just use ffile", type=float, default=0.6)
-    parser.add_argument("-D", '--debug', action='store_false')
+    parser.add_argument("-D", '--debug', action='store_true', default=False)
     parser.add_argument('--version', type=str, default='0129')
 
     # parser.add_argument("--version", help="check version", type=str, default='lg')
@@ -559,8 +560,10 @@ def options():
 
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
+        logger.info(f'Run with debug model, {args.debug}')
     else:
         logging.getLogger().setLevel(logging.INFO)
+        logger.info(f'Run with info model, {args.debug}')
 
     return args
 
