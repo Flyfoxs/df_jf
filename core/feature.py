@@ -244,10 +244,12 @@ def get_train_feature(wtid, col, args):
     missing_block = block.loc[(block.wtid == wtid) & (block.col == col) & (block.kind == 'missing')]
 
     for missing_length in missing_block['length'].sort_values().values:
-        if args.file_num==1:
-            cur_windows = round(missing_length * 0.7)
-        else:
-            cur_windows = missing_length * 2
+        window_ratio = options().window
+        cur_windows = max(1, round(missing_length * window_ratio))
+        # if args.file_num==1:
+        #     cur_windows = round(missing_length * 0.7)
+        # else:
+        #     cur_windows = missing_length * 2
         at_least_len = missing_length + 2 * cur_windows
         logger.debug(
             f'get_train_feature:file_num={args.file_num}, at_least_len={at_least_len}, window={cur_windows}, missing_len={missing_length} {train_block[train_block["length"]>=at_least_len].shape}')
@@ -259,9 +261,9 @@ def get_train_feature(wtid, col, args):
 
             begin, end = cur_block.begin, cur_block.end
             # Get the data without missing
-            block = train.iloc[begin:end + 1]
+            block = train.loc[begin:end]
 
-            block = block.reset_index(drop=True)
+            #block = block.reset_index(drop=True)
 
             # only pick the latest data closed to training
             block = block.iloc[-at_least_len:]
@@ -272,12 +274,17 @@ def get_train_feature(wtid, col, args):
             train_feature = pd.concat([block.iloc[:cur_windows], block.iloc[-cur_windows:]])
             val_feature = block.iloc[cur_windows: -cur_windows]
 
+            logger.debug(f'blockid:{index} , original  train_t_sn:{train_feature.time_sn.min()}, {train_feature.time_sn.min()},'
+                         f' val_time_sn:{val_feature.time_sn.min()}:{val_feature.time_sn.max()}')
+
             time_gap = val_feature.time_sn.max() - val_feature.time_sn.min()
             time_begin = val_feature.time_sn.min() - 2 * time_gap
             time_end = val_feature.time_sn.max() + 2 * time_gap
             # Make the train closed to validate
             train_feature = train_feature[(train_feature.time_sn >= time_begin) & (train_feature.time_sn <= time_end)]
 
+            logger.debug(f'blockid:{index} new train_t_sn:{train_feature.time_sn.min()}, {train_feature.time_sn.min()},'
+                         f' val_time_sn:{val_feature.time_sn.min()}:{val_feature.time_sn.max()}')
             feature_list.append((train_feature, val_feature, index))
             # logger.debug(f'Train:{train_feature.shape}, Val:{val_feature.shape}')
 
@@ -286,14 +293,15 @@ def get_train_feature(wtid, col, args):
 
 @timed()
 def get_submit_feature_by_block_id(blockid, cur_file_num ):
-    cur_block = get_blocks().iloc[blockid]
+    cur_block = get_blocks().loc[blockid]
     logger.debug(f'cur_block:\n{cur_block}')
 
     col_name = cur_block['col']
     wtid = cur_block['wtid']
     missing_length = cur_block['length']
 
-    cur_windows = round(missing_length * 0.7)
+    window_ratio = options().window
+    cur_windows = max(1,round(missing_length * window_ratio))
 
     if cur_file_num == 1:
         train = get_train_ex(wtid)[[col_name, 'time_sn', ]]
@@ -302,7 +310,7 @@ def get_submit_feature_by_block_id(blockid, cur_file_num ):
 
     begin, end = cur_block.begin, cur_block.end
     # Get the data without missing
-    block = train.iloc[max(0,begin - cur_windows):end + cur_windows + 1]#[['time_sn', col_name]]
+    block = train.loc[max(0,begin - cur_windows):end + cur_windows]#[['time_sn', col_name]]
 
     #block = block.reset_index(drop=True)
 
@@ -323,6 +331,9 @@ def get_submit_feature_by_block_id(blockid, cur_file_num ):
 
     logger.debug(f'train_feature:{train_feature.columns}')
     logger.debug(f'val_feature:{val_feature.columns}')
+    if len(train_feature) == 0 or len(val_feature) == 0:
+        logger.exception(f'train_feature:{train_feature.shape}, val_feature:{val_feature.shape} for blockid:{blockid}, cur_file_num:{cur_file_num}')
+        raise Exception('Error when get feature')
     return train_feature, val_feature
 
 
@@ -530,19 +541,25 @@ def get_train_feature_multi_file(wtid, col, file_num):
     related_wtid_list = [int(col.split('_')[1]) for col in related_wtid_list.index]
 
     train = get_train_rename(wtid, col)
+    input_len = len(train)
     train.rename(columns={f'{col}_{wtid}':col}, inplace=True)
     train['id']=train.index
     for related_wtid in related_wtid_list:
         train_tmp = get_train_rename(related_wtid, col)
         train_tmp = train_tmp.drop(axis='column', columns=['time_sn'])
         train = train.merge(train_tmp, how='left', on=['time_slot_7'])
-    train = train.drop_duplicates(['id'])
+        train = train.drop_duplicates(['id'])
     train = train.set_index('id')
     col_list = [col for col in train.columns if 'var' in col]
     col_list.append('time_sn')
     train = train[col_list]
     train.iloc[:,1:].fillna(method='ffill', inplace=True)
-    return train
+
+    if len(train) != input_len:
+        logger.exception(f"There are some row are missing for wtid:{wtid}, col:{col}, file_num:{file_num}")
+        raise Exception(f"There are some row are missing for wtid:{wtid}, col:{col}, file_num:{file_num}")
+
+    return train.sort_index()
 
 
 def options():
@@ -550,20 +567,22 @@ def options():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--file_num", help="How many files need to merge to train set", type=int, default=1)
-    parser.add_argument("--cut_len", help="Cut the begin, end to ffill", type=int, default=100)
+
+    #Base on the latest data, not the avg
+    parser.add_argument("--cut_len", help="fill begin, end of the val with ffill/bfill directly", type=int, default=100)
     parser.add_argument("--top_threshold", help="If the top#2 arrive ?%, then just use ffile", type=float, default=0.6)
     parser.add_argument("-D", '--debug', action='store_true', default=False)
     parser.add_argument('--version', type=str, default='0129')
+    parser.add_argument('--window', type=float, default=0.7, help='It control how many sample will be choose: window*len(test)')
+
 
     # parser.add_argument("--version", help="check version", type=str, default='lg')
     args = parser.parse_args()
 
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
-        logger.info(f'Run with debug model, {args.debug}')
     else:
         logging.getLogger().setLevel(logging.INFO)
-        logger.info(f'Run with info model, {args.debug}')
 
     return args
 

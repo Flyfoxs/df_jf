@@ -29,6 +29,35 @@ def predict_stable_col(train, val, threshold=0.5):
         logger.error(f'Cur ration is {cur_ratio}, threshold: {threshold}')
         return None
 
+def get_momenta_value(arr_begin, arr_end):
+    return arr_begin[-1], arr_end[0]
+
+    avg_begin = arr_begin.mean()
+    avg_end   = arr_end.mean()
+    if avg_begin not in arr_begin:
+        if avg_begin< avg_end:
+            arr_begin = sorted(arr_begin)
+        else:
+            arr_begin = sorted(arr_begin, reverse=True)
+        for val in arr_begin:
+            if val > avg_begin:
+                avg_begin = val
+                break
+
+    if avg_end not in arr_end:
+        if avg_begin < avg_end:
+            arr_end = sorted(arr_end, reverse=True)
+        else:
+            arr_end = sorted(arr_end)
+        for val in arr_end:
+            if val < avg_end:
+                avg_end = val
+                break
+
+    return avg_begin, avg_end
+
+
+
 
 def get_cut_predict(train, val, cut_len):
     from sklearn.linear_model import Ridge, LinearRegression
@@ -47,8 +76,12 @@ def get_cut_predict(train, val, cut_len):
 
         logger.debug(f'train:{train.shape}, val{val.shape}')
 
-        begin_val=train.iloc[:, 0].loc[:(block_begin - 1)].tail(1).iat[0]
-        end_val = train.iloc[:, 0].loc[(block_end + 1):].iat[0]
+        begin_val=train.iloc[:, 0].loc[:(block_begin - 1)].tail(20).values
+        end_val = train.iloc[:, 0].loc[(block_end + 1):].head(20).values
+
+        begin_val, end_val = get_momenta_value(begin_val, end_val)
+
+
 
         return np.hstack((np.ones(cut_len) * begin_val,
                           clf.predict(val.iloc[cut_len:len(val)-cut_len]),
@@ -146,8 +179,9 @@ def predict_all(version):
     submit = submit[['ts', 'wtid']].merge(train_all, how='left', on=['ts', 'wtid'])
     submit = round(submit, 2)
 
-    file = f"./output/submit_{version}_file={args.file_num}_cut={args.cut_len}_score={'_'.join(score_avg)}.csv"
+    file = f"./output/submit_{args}_score={'_'.join(score_avg)}.csv"
     submit = submit.iloc[:, :70]
+    file = replace_invalid_filename_char(file)
     submit.to_csv(file,index=None)
 
     logger.info(f'Sub({submit.shape}) file save to {file}')
@@ -156,8 +190,8 @@ def predict_all(version):
 
 
 
+@timed()
 @lru_cache()
-@file_cache(overwrite=True)
 def check_score_all(pic=False):
     args = options()
     std = get_std_all()
@@ -188,6 +222,7 @@ def check_score_all(pic=False):
 
     score_df= std.sort_values('score_1_file')
     score_df.columns = ['_'.join(col) for col in score_df.columns]
+
     return score_df
 
 
@@ -231,7 +266,8 @@ def check_score(col, pic, args):
     return avg_loss
 
 
-
+def analysis_score():
+    pass
 
 
 if __name__ == '__main__':
@@ -243,8 +279,20 @@ if __name__ == '__main__':
 
     # score_df = check_score_all(version='0126')
 
-    args = options()
 
-    logger.info(f'Program input:{args}')
 
-    submit = predict_all(args.version)
+    logger.info(f'Program input:{options()}')
+
+    submit = predict_all(options().version)
+    #
+    # score_df = check_score_all(pic=False)
+    # score_avg = round(score_df.iloc[:, -5].mean(), 4), round(score_df.iloc[:, -5:].max(axis=1).mean(), 4)
+    # score_avg = [ str(item) for  item in score_avg]
+    # logger.info(f'The validate score is {score_avg} for args:{options()}')
+    #
+    # file = f'./output/score_{options()}_{score_avg}.h5'
+    # file = replace_invalid_filename_char(file)
+    # score_df.to_hdf(file, key='score')
+    # logger.info(f'All socre is save to :{file}')
+
+
