@@ -590,40 +590,6 @@ def get_train_feature_multi_file(wtid, col, file_num):
     return train.sort_index()
 
 
-def options():
-    import argparse
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument("--file_num", help="How many files need to merge to train set", type=int, default=1)
-
-    #Base on the latest data, not the avg
-    parser.add_argument("--cut_len", help="fill begin, end of the val with ffill/bfill directly", type=int, default=100)
-    parser.add_argument("--top_threshold", help="If the top#2 arrive ?%, then just use ffile", type=float, default=0.6)
-    parser.add_argument("-D", '--debug', action='store_true', default=False)
-    parser.add_argument("-W", '--warning', action='store_true', default=False)
-    parser.add_argument('--version', type=str, default='0129')
-    parser.add_argument('--window', type=float, default=0.7, help='It control how many sample will be choose: window*len(test)')
-
-
-    # parser.add_argument("--version", help="check version", type=str, default='lg')
-    args = parser.parse_args()
-
-    if args.debug:
-        logging.getLogger().setLevel(logging.DEBUG)
-    elif args.warning:
-        logging.getLogger().setLevel(logging.WARNING)
-    else:
-        logging.getLogger().setLevel(logging.INFO)
-
-
-
-
-
-
-
-
-    return args
-
 
 if __name__ == '__main__':
 

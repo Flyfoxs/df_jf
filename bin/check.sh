@@ -4,5 +4,5 @@ cd ..
 
 PYTHONPATH=/users/hdpsbp/bk/df_jf:/users/hdpsbp/felix/keras:$PYTHONPATH
 
-
-/apps/dslab/anaconda/python3/bin/python ./core/check.py -L --col_begin $1 --col_end $2
+PATH=/apps/dslab/anaconda/python3/bin:$PATH
+python ./core/check.py -L --col_begin $1 --col_end $2 $3 $4 $5 $6
