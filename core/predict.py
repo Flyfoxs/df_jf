@@ -66,7 +66,7 @@ def get_cut_predict(train, val, momenta_impact_length):
     from sklearn.linear_model import Ridge, LinearRegression
     clf = LinearRegression()
     np.random.seed(0)
-    logger.debug(f'{train.shape}, {val.shape}:[{val.index.min()}, {val.index.max()}] {train.columns}')
+    logger.debug(f'train:{train.shape}, val:{val.shape}:[{val.index.min()}, {val.index.max()}] {train.columns}')
     clf.fit(train.iloc[:, 1:], train.iloc[:, 0])
 
     if isinstance(val, pd.DataFrame):

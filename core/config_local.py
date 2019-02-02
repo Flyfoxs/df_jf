@@ -1,1 +1,1 @@
-cache_size = 4
+cache_size = 8

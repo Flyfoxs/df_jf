@@ -94,7 +94,7 @@ def get_train_ex(wtid):
     template = get_sub_template()
     template = template[template.wtid == int(wtid)]
     template.set_index('ts', inplace=True)
-    template.drop(columns='sn', errors='ignore', inplace=True)
+    template = template.drop(columns='sn', errors='ignore')
 
     #logger.debug(f'template={template.shape}')
 
@@ -235,6 +235,7 @@ def get_missing_block_single(wtid, col, cur_missing, window=100):
     return begin, end, train
 
 
+
 def get_train_feature(wtid, col, args):
     feature_list = []
 
@@ -245,84 +246,113 @@ def get_train_feature(wtid, col, args):
     missing_block = block.loc[(block.wtid == wtid) & (block.col == col) & (block.kind == 'missing')]
 
     for missing_length in missing_block['length'].sort_values().values:
-        window_ratio = args.window
-        cur_windows = max(1, missing_length * window_ratio)
-        cur_windows = int(cur_windows)
+
         # if args.file_num==1:
         #     cur_windows = round(missing_length * 0.7)
         # else:
         #     cur_windows = missing_length * 2
-        at_least_len = missing_length + 2 * cur_windows
+        at_least_len_for_block = int(10 * missing_length)
         logger.debug(
-            f'get_train_feature:file_num={args.file_num}, at_least_len={at_least_len}, cur_window={cur_windows}, missing_len={missing_length} {train_block[train_block["length"]>=at_least_len].shape}')
-        for index, cur_block in (train_block[train_block['length'] >= at_least_len]).iterrows():
+            f'get_train_feature:file_num={args.file_num}, at_least_len_for_block={at_least_len_for_block},  '
+            f'missing_len={missing_length}')
+        for index, cur_block in (train_block[train_block['length'] >= at_least_len_for_block]).iterrows():
 
-            if args.file_num==1:
-                train = get_train_ex(wtid)[[col, 'time_sn', ]]
-            else:
-                train = get_train_feature_multi_file(wtid, col, args.file_num)
+
+            train = get_train_feature_multi_file(wtid, col, args.file_num)
+
 
             begin, end = cur_block.begin, cur_block.end
             # Get the data without missing
             block = train.loc[begin:end]
 
-            #block = block.reset_index(drop=True)
+            val_feature = block.iloc[-missing_length*4: -missing_length*3]
 
-            # only pick the latest data closed to training
-            block = block.iloc[-at_least_len:]
+            train_feature = get_train_df_by_val(train, val_feature, args)
 
-            # logger.debug(
-            #     f'wtid:{wtid}, col:{col}, len:{len(block)}, std:{block[col].std():2.2f}, block:[{end-at_least_len},{end}]')
-
-            train_feature = pd.concat([block.iloc[:cur_windows], block.iloc[-cur_windows:]])
-            val_feature = block.iloc[cur_windows: -cur_windows]
-
-            logger.debug(f'blockid:{index} , original  train_t_sn:{train_feature.time_sn.min()}, {train_feature.time_sn.min()},'
+            logger.debug(f'blockid:{index} , train_shape:{train_feature.shape} '
+                         f'train_t_sn:{train_feature.time_sn.min()}, {train_feature.time_sn.min()},'
                          f' val_time_sn:{val_feature.time_sn.min()}:{val_feature.time_sn.max()}')
 
-            time_gap = max(30,val_feature.time_sn.max() - val_feature.time_sn.min())
-            time_begin = val_feature.time_sn.min() - 5 * time_gap
-            time_end = val_feature.time_sn.max() + 5 * time_gap
-            # Make the train closed to validate
-            train_feature = train_feature[(train_feature.time_sn >= time_begin) & (train_feature.time_sn <= time_end)]
 
-            logger.debug(f'blockid:{index} new train_t_sn:{train_feature.time_sn.min()}, {train_feature.time_sn.min()},'
-                         f' val_time_sn:{val_feature.time_sn.min()}:{val_feature.time_sn.max()}')
+            if args.file_num > 1  and args.time_sn == False:
+                train_feature = train_feature.drop(axis='column', columns=['time_sn'], errors='ignore')
+                val_feature = val_feature.drop(axis='column', columns=['time_sn'], errors='ignore')
 
-            if len(train_feature) == 0 :
-                logger.exception(f'Train feature length is none, blockid#{index}')
-                raise Exception(f'Train feature length is none, blockid#{index}')
             feature_list.append((train_feature, val_feature, index))
             # logger.debug(f'Train:{train_feature.shape}, Val:{val_feature.shape}')
 
     return feature_list
 
 
+def get_train_df_by_val(train,val_feature, args):
+    try:
+        window_ratio = args.window
+        missing_length = len(val_feature)
+
+        cur_windows = max(3, missing_length * window_ratio)
+        cur_windows = int(cur_windows)
+
+        val_begin = val_feature.index.min()
+        val_end = val_feature.index.max()
+
+        begin = val_begin - cur_windows
+        end = val_end + cur_windows
+
+        part1 = train.iloc[begin : val_begin]
+        part2 = train.iloc[val_end+1 : end+1]
+
+        train_feature = pd.concat([part1, part2])
+
+        time_gap = max(30, val_feature.time_sn.max() - val_feature.time_sn.min())
+        time_begin = val_feature.time_sn.min() - 5 * time_gap
+        time_end = val_feature.time_sn.max() + 5 * time_gap
+        # Make the train closed to validate
+        train_feature = train_feature[(train_feature.time_sn >= time_begin) & (train_feature.time_sn <= time_end)]
+        logger.debug(f'train_t_sn:{train_feature.time_sn.min()}, {train_feature.time_sn.min()},'
+                     f' val_time_sn:{val_feature.time_sn.min()}:{val_feature.time_sn.max()}')
+        logger.debug(f'Range: Train_val: '
+                     f'[{part1.index.min()}, {part1.index.max()} ]({len(part1)}) '
+                     f'[{val_feature.index.min()}, {val_feature.index.max()}]({len(val_feature)}), '
+                     f'[{part2.index.min()}, {part2.index.max()} ]({len(part2)})' )
+
+    except Exception  as e:
+        logger.exception(f'Can not get train for val block:{val_begin}:{val_end}, {args}')
+        logger.exception(e)
+        raise e
+    if len(train_feature) == 0:
+        logger.exception(f'Train feature length is none, for val block:{val_begin}:{val_end}')
+        raise Exception(f'Train feature length is none, for val block:{val_begin}:{val_end}')
+    return train_feature
+
+
 @timed()
-def get_submit_feature_by_block_id(blockid, cur_file_num ):
+def get_submit_feature_by_block_id(blockid, args ):
     cur_block = get_blocks().loc[blockid]
     logger.debug(f'cur_block:\n{cur_block}')
 
+    kind = cur_block['kind']
     col_name = cur_block['col']
     wtid = cur_block['wtid']
     missing_length = cur_block['length']
+    begin, end = cur_block.begin, cur_block.end
+
 
     window_ratio = options().window
     cur_windows = max(1,round(missing_length * window_ratio))
 
-    if cur_file_num == 1:
-        train = get_train_ex(wtid)[[col_name, 'time_sn', ]]
-    else:
-        train = get_train_feature_multi_file(wtid, col_name, cur_file_num)
 
-    begin, end = cur_block.begin, cur_block.end
+    submit = get_train_feature_multi_file(wtid, col_name, args.file_num)
+
+    if args.file_num > 1 and args.time_sn == False:
+        train = get_train_ex(wtid)[[args.col_name, 'time_sn', ]]
+
     # Get the data without missing
-    block = train.loc[max(0,begin - cur_windows):end + cur_windows]#[['time_sn', col_name]]
+    block = submit.loc[max(0,begin - cur_windows):end + cur_windows]#[['time_sn', col_name]]
 
     #block = block.reset_index(drop=True)
 
-    logger.debug(f'wtid:{wtid}, col:{col_name}, file_num:{cur_file_num}, len:{len(block)}, std:{block[col_name].std():2.2f}, blockid:{blockid}')
-    logger.debug(f'Train columns:{train.columns}')
+    logger.debug(f'wtid:{wtid}, col:{col_name}, file_num:{args.file_num}, len:{len(block)}, std:{block[col_name].std():2.2f}, blockid:{blockid}')
+    logger.debug(f'Train columns:{submit.columns}')
     train_feature = block.dropna(how='any')
     val_feature = block.loc[begin:end]
 
@@ -336,10 +366,10 @@ def get_submit_feature_by_block_id(blockid, cur_file_num ):
 
     logger.debug(f'new(filter by time): {train_feature.shape}, {val_feature.shape}')
 
-    logger.debug(f'train_feature:{train_feature.columns}')
-    logger.debug(f'val_feature:{val_feature.columns}')
+    logger.debug(f'{kind}:train_feature:{train_feature.columns}')
+    logger.debug(f'{kind}:val_feature:{val_feature.columns}')
     if len(train_feature) == 0 or len(val_feature) == 0:
-        logger.exception(f'train_feature:{train_feature.shape}, val_feature:{val_feature.shape} for blockid:{blockid}, cur_file_num:{cur_file_num}')
+        logger.exception(f'train_feature#{kind}:{train_feature.shape}, val_feature:{val_feature.shape} for blockid:{blockid}, cur_file_num:{cur_file_num}')
         raise Exception('Error when get feature')
     return train_feature, val_feature
 
@@ -538,7 +568,7 @@ def get_corr_wtid(col_name):
 @lru_cache(maxsize=2)
 @timed()
 def get_train_feature_multi_file(wtid, col, file_num):
-    if file_num <=1:
+    if file_num <1:
         raise Exception(f'file_num should be large then 1, cur file_num is {file_num}')
 
     cor = get_corr_wtid(col)
@@ -549,7 +579,7 @@ def get_train_feature_multi_file(wtid, col, file_num):
 
     train = get_train_rename(wtid, col)
     input_len = len(train)
-    train.rename(columns={f'{col}_{wtid}':col}, inplace=True)
+    train = train.rename(columns={f'{col}_{wtid}':col})
     train['id']=train.index
     for related_wtid in related_wtid_list:
         train_tmp = get_train_rename(related_wtid, col)
@@ -560,7 +590,7 @@ def get_train_feature_multi_file(wtid, col, file_num):
     col_list = [col for col in train.columns if 'var' in col]
     col_list.append('time_sn')
     train = train[col_list]
-    train.iloc[:,1:].fillna(method='ffill', inplace=True)
+    train.iloc[:, 1:] = train.iloc[:,1:].fillna(method='ffill')
 
     if len(train) != input_len:
         logger.exception(f"There are some row are missing for wtid:{wtid}, col:{col}, file_num:{file_num}")

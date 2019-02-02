@@ -1,5 +1,6 @@
 import sys
-sys.path.insert(99, '/users/hdpsbp/bk/df_jf')
+sys.path.insert(99, './df_jf')
+sys.path.insert(99, '../df_jf')
 print(sys.path)
 
 from core.feature import *
@@ -41,7 +42,7 @@ def check_score(args, pic=False):
     for train, val, blockid in train_list :
 
         is_enum = True if 'int' in date_type[col].__name__ else False
-
+        logger.debug(f'Blockid#{blockid}, train:{train.shape}, val:{val.shape}, file_num:{args.file_num}')
         check_fn = get_predict_fun(blockid, train, args)
 
         if pic:
@@ -71,8 +72,10 @@ def check_score_all():
     window = 0.7
     momenta_col_length = 1
     momenta_impact_length = 300
-    related_col_count = 0
     time_sn = True
+    related_col_count = 0
+    drop_threshold = 1
+
     class_name = 'lr'
 
     args = check_options()
@@ -83,7 +86,7 @@ def check_score_all():
                 window = round(window,1)
                 for momenta_col_length in range(1, 20, 4):
                     for momenta_impact_length in [100, 200, 300]:
-                        #for wtid in range(1, 3):
+                        for time_sn in [True, False]:
                                 for file_num in range(1, 6):
                                     args = { 'wtid': wtid,
                                              'col_name': col_name,
@@ -92,6 +95,7 @@ def check_score_all():
                                              'momenta_col_length':momenta_col_length,
                                              'momenta_impact_length': momenta_impact_length,
                                              'related_col_count': related_col_count,
+                                             'drop_threshold': drop_threshold,
                                              'time_sn': time_sn ,
                                              'class_name': class_name,
                                              'ct': pd.to_datetime('now')
