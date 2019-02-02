@@ -78,43 +78,44 @@ def check_score_all():
 
     class_name = 'lr'
 
-    args = check_options()
+    app_args = check_options()
     for wtid in range(2, 5):
-        for col_name_sn in range(args.col_begin, args.col_end+1):
-            col_name = f"var{str(col_name_sn).rjust( 3, '0',)}"
             for window in np.arange(0.5, 1.5, 0.2):
                 window = round(window,1)
                 for momenta_col_length in range(1, 20, 4):
                     for momenta_impact_length in [100, 200, 300]:
                         for time_sn in [True, False]:
                                 for file_num in range(1, 6):
-                                    args = { 'wtid': wtid,
-                                             'col_name': col_name,
-                                             'file_num':file_num,
-                                             'window': window,
-                                             'momenta_col_length':momenta_col_length,
-                                             'momenta_impact_length': momenta_impact_length,
-                                             'related_col_count': related_col_count,
-                                             'drop_threshold': drop_threshold,
-                                             'time_sn': time_sn ,
-                                             'class_name': class_name,
-                                             'ct': pd.to_datetime('now')
-                                            }
-                                    args = DefaultMunch(None, args)
+                                    for col_name_sn in range(app_args.col_begin, app_args.col_end + 1):
+                                        col_name = f"var{str(col_name_sn).rjust( 3, '0',)}"
 
-                                    score = check_score(args)
-                                    logger.debug(f'Current score is{score:.4f} wtih:{args}')
+                                        args = { 'wtid': wtid,
+                                                 'col_name': col_name,
+                                                 'file_num':file_num,
+                                                 'window': window,
+                                                 'momenta_col_length':momenta_col_length,
+                                                 'momenta_impact_length': momenta_impact_length,
+                                                 'related_col_count': related_col_count,
+                                                 'drop_threshold': drop_threshold,
+                                                 'time_sn': time_sn ,
+                                                 'class_name': class_name,
+                                                 'ct': pd.to_datetime('now')
+                                                }
+                                        args = DefaultMunch(None, args)
 
-                                    score_file = f'./score/{col_name}.h5'
-                                    if os.path.exists(score_file):
-                                        score_df = pd.read_hdf(score_file)
-                                    else:
-                                        score_df = pd.DataFrame()
-                                    args['score'] = score
+                                        score = check_score(args)
+                                        logger.debug(f'Current score is{score:.4f} wtih:{args}')
 
-                                    score_df = score_df.append(args, ignore_index=True)
-                                    logger.info(f'Save {score_df.shape} to file:{score_file}')
-                                    score_df.to_hdf(score_file,'score')
+                                        score_file = f'./score/{col_name}.h5'
+                                        if os.path.exists(score_file):
+                                            score_df = pd.read_hdf(score_file)
+                                        else:
+                                            score_df = pd.DataFrame()
+                                        args['score'] = score
+
+                                        score_df = score_df.append(args, ignore_index=True)
+                                        logger.info(f'Save {score_df.shape} to file:{score_file}')
+                                        score_df.to_hdf(score_file,'score')
 
 def check_options():
     import argparse
@@ -150,13 +151,12 @@ def check_options():
 
 
 @lru_cache()
-def get_best_file_num(col_name):
-    score_df = check_score_all(pic=False)  # .reset_index()
-
-    ser = score_df.iloc[:, -5:].idxmax(axis=1)
-    #print(ser.loc[col_name])
-    logger.debug(ser)
-    return int(ser.loc[col_name].split('_')[1])
+def get_best_para(col_name, wtid=None, top_n=0):
+    tmp = pd.read_hdf(f'./score/{col_name}.h5')
+    if wtid is not None:
+        tmp = tmp.loc[tmp.wtid==wtid]
+    tmp = tmp.sort_values(['score', 'ct'], ascending=[False, True]).reset_index(drop=True)
+    return tmp.iloc[top_n]
 
 
 def score(val1, val2, enum=False):

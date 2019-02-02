@@ -8,24 +8,25 @@ import fire
 
 
 
-@file_cache()
-def predict_wtid(wtid, args):
+
+def predict_wtid(wtid):
     block_list = get_blocks()
 
     train_ex = get_train_ex(wtid)
     for blockid, missing_block in block_list.loc[
-                (block_list.wtid == wtid) & (block_list.kind == 'missing')].iterrows():
+                (block_list.wtid == wtid) &
+                (block_list.kind == 'missing')
+                #( block_list.col == 'var001')
+                    ].iterrows():
         col_name = missing_block.col
 
-        if args.file_num > 0:
-            cur_file_num = args.file_num
-        else:
-            cur_file_num = get_best_file_num(col_name)
 
-        logger.info(f'===Predict wtid:{wtid:2},{col_name},blockid:{blockid:6}, best_file_num:{cur_file_num}, type:{missing_block.data_type}')
-        train, sub = get_submit_feature_by_block_id(blockid, cur_file_num)
+        para = get_best_para(col_name, None, top_n=0)
 
-        predict_fn = get_predict_fun(blockid, train, args)
+        logger.info(f'===Predict wtid:{wtid:2},{col_name},blockid:{blockid:6}, best_file_num:{para.file_num}, type:{missing_block.data_type}')
+        train, sub = get_submit_feature_by_block_id(blockid, para)
+
+        predict_fn = get_predict_fun(blockid, train, para)
         predict_res = predict_fn(sub.iloc[:, 1:])
         logger.debug(f'sub={sub.shape}, predict_res={predict_res.shape}, type={type(predict_res)}')
         sub[col_name] = predict_res
@@ -42,8 +43,7 @@ def predict_wtid(wtid, args):
     submit.ts = pd.to_datetime(submit.ts)
     train_ex = train_ex[ train_ex.ts.isin(submit.ts) ]
     train_ex.wtid = train_ex.wtid.astype(int)
-
-    train_ex.drop(axis=['column'], columns=['time_sn'], inplace=True)
+    train_ex = train_ex.drop(axis=['column'], columns=['time_sn'])
     return convert_enum(train_ex)
 
 @file_cache(overwrite=True)
@@ -95,8 +95,11 @@ if __name__ == '__main__':
 
 
     logger.info(f'Program input:{options()}')
+    sub = predict_wtid(2)
 
-    submit = predict_all(options().version)
+    logger.info(sub.shape)
+
+    #submit = predict_all(options().version)
     #
     # score_df = check_score_all(pic=False)
     # score_avg = round(score_df.iloc[:, -5].mean(), 4), round(score_df.iloc[:, -5:].max(axis=1).mean(), 4)

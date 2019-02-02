@@ -11,7 +11,7 @@ def get_predict_fun(blockid, train, args):
     if is_enum:
         fn = lambda val: predict_stable_col(train, val, 0)
     else:
-        fn = lambda val : get_cut_predict(train, val, args.momenta_impact_length)
+        fn = lambda val : get_cut_predict(train, val, args)
 
     return fn
 
@@ -34,7 +34,6 @@ def predict_stable_col(train, val, threshold=0.5):
         return None
 
 def get_momenta_value(arr_begin, arr_end):
-    return arr_begin[-1], arr_end[0]
 
     avg_begin = arr_begin.mean()
     avg_end   = arr_end.mean()
@@ -62,17 +61,24 @@ def get_momenta_value(arr_begin, arr_end):
 
 
 
-def get_cut_predict(train, val, momenta_impact_length):
+def get_cut_predict(train, val, args):
     from sklearn.linear_model import Ridge, LinearRegression
+
+    momenta_col_length = int(args.momenta_col_length)
+    momenta_impact_length = int(args.momenta_impact_length)
+    enable_time = args.time_sn
+
     clf = LinearRegression()
     np.random.seed(0)
-    logger.debug(f'train:{train.shape}, val:{val.shape}:[{val.index.min()}, {val.index.max()}] {train.columns}')
+    logger.debug(f'train:{train.shape}, val:{val.shape}:[{val.index.min()}, {val.index.max()}] {train.columns} ({args.time_sn})')
+    if not enable_time and int(args.file_num) > 1:
+        val   =   val.drop(axis='column', columns=['time_sn'])
+        train = train.drop(axis='column', columns=['time_sn'])
+
     clf.fit(train.iloc[:, 1:], train.iloc[:, 0])
 
     if isinstance(val, pd.DataFrame):
-
         cut_len = min(momenta_impact_length, len(val)//3)
-
 
         block_begin = val.index.min()
         block_end = val.index.max()
@@ -80,12 +86,10 @@ def get_cut_predict(train, val, momenta_impact_length):
 
         logger.debug(f'train:{train.shape}, val{val.shape}')
 
-        begin_val=train.iloc[:, 0].loc[:(block_begin - 1)].tail(20).values
-        end_val = train.iloc[:, 0].loc[(block_end + 1):].head(20).values
+        begin_val=train.iloc[:, 0].loc[:(block_begin - 1)].tail(momenta_col_length).values
+        end_val = train.iloc[:, 0].loc[(block_end + 1):].head(momenta_col_length).values
 
-        begin_val, end_val = get_momenta_value(begin_val, end_val)
-
-
+        begin_val, end_val = get_momenta_value(begin_val, end_val )
 
         return np.hstack((np.ones(cut_len) * begin_val,
                           clf.predict(val.iloc[cut_len:len(val)-cut_len]),

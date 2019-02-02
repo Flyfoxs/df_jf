@@ -274,9 +274,6 @@ def get_train_feature(wtid, col, args):
                          f' val_time_sn:{val_feature.time_sn.min()}:{val_feature.time_sn.max()}')
 
 
-            if args.file_num > 1  and args.time_sn == False:
-                train_feature = train_feature.drop(axis='column', columns=['time_sn'], errors='ignore')
-                val_feature = val_feature.drop(axis='column', columns=['time_sn'], errors='ignore')
 
             feature_list.append((train_feature, val_feature, index))
             # logger.debug(f'Train:{train_feature.shape}, Val:{val_feature.shape}')
@@ -303,6 +300,8 @@ def get_train_df_by_val(train,val_feature, args):
 
         train_feature = pd.concat([part1, part2])
 
+        train_feature = train_feature.dropna(how='any')
+
         time_gap = max(30, val_feature.time_sn.max() - val_feature.time_sn.min())
         time_begin = val_feature.time_sn.min() - 5 * time_gap
         time_end = val_feature.time_sn.max() + 5 * time_gap
@@ -325,8 +324,8 @@ def get_train_df_by_val(train,val_feature, args):
     return train_feature
 
 
-@timed()
-def get_submit_feature_by_block_id(blockid, args ):
+#@timed()
+def get_submit_feature_by_block_id(blockid, para ):
     cur_block = get_blocks().loc[blockid]
     logger.debug(f'cur_block:\n{cur_block}')
 
@@ -337,40 +336,31 @@ def get_submit_feature_by_block_id(blockid, args ):
     begin, end = cur_block.begin, cur_block.end
 
 
-    window_ratio = options().window
-    cur_windows = max(1,round(missing_length * window_ratio))
+    submit = get_train_feature_multi_file(wtid, col_name, para.file_num)
 
 
-    submit = get_train_feature_multi_file(wtid, col_name, args.file_num)
+    val_feature = submit.loc[begin:end]
 
-    if args.file_num > 1 and args.time_sn == False:
-        train = get_train_ex(wtid)[[args.col_name, 'time_sn', ]]
-
-    # Get the data without missing
-    block = submit.loc[max(0,begin - cur_windows):end + cur_windows]#[['time_sn', col_name]]
-
-    #block = block.reset_index(drop=True)
-
-    logger.debug(f'wtid:{wtid}, col:{col_name}, file_num:{args.file_num}, len:{len(block)}, std:{block[col_name].std():2.2f}, blockid:{blockid}')
+    logger.debug(f'wtid:{wtid}, col:{col_name}, file_num:{para.file_num},   blockid:{blockid}')
     logger.debug(f'Train columns:{submit.columns}')
-    train_feature = block.dropna(how='any')
-    val_feature = block.loc[begin:end]
+
+    train_feature = get_train_df_by_val(submit, val_feature, para)
 
     logger.debug(f'original: {train_feature.shape}, {val_feature.shape}')
-
-    time_gap = max(30, val_feature.time_sn.max() - val_feature.time_sn.min())
-    time_begin = val_feature.time_sn.min() - 5 * time_gap
-    time_end = val_feature.time_sn.max() + 5 * time_gap
-    # Make the train closed to validate
-    train_feature = train_feature[(train_feature.time_sn >= time_begin) & (train_feature.time_sn <= time_end)]
-
-    logger.debug(f'new(filter by time): {train_feature.shape}, {val_feature.shape}')
-
-    logger.debug(f'{kind}:train_feature:{train_feature.columns}')
-    logger.debug(f'{kind}:val_feature:{val_feature.columns}')
-    if len(train_feature) == 0 or len(val_feature) == 0:
-        logger.exception(f'train_feature#{kind}:{train_feature.shape}, val_feature:{val_feature.shape} for blockid:{blockid}, cur_file_num:{cur_file_num}')
-        raise Exception('Error when get feature')
+    #
+    # time_gap = max(30, val_feature.time_sn.max() - val_feature.time_sn.min())
+    # time_begin = val_feature.time_sn.min() - 5 * time_gap
+    # time_end = val_feature.time_sn.max() + 5 * time_gap
+    # # Make the train closed to validate
+    # train_feature = train_feature[(train_feature.time_sn >= time_begin) & (train_feature.time_sn <= time_end)]
+    #
+    # logger.debug(f'new(filter by time): {train_feature.shape}, {val_feature.shape}')
+    #
+    # logger.debug(f'{kind}:train_feature:{train_feature.columns}')
+    # logger.debug(f'{kind}:val_feature:{val_feature.columns}')
+    # if len(train_feature) == 0 or len(val_feature) == 0:
+    #     logger.exception(f'train_feature#{kind}:{train_feature.shape}, val_feature:{val_feature.shape} for blockid:{blockid}, cur_file_num:{cur_file_num}')
+    #     raise Exception('Error when get feature')
     return train_feature, val_feature
 
 
@@ -568,6 +558,7 @@ def get_corr_wtid(col_name):
 @lru_cache(maxsize=2)
 @timed()
 def get_train_feature_multi_file(wtid, col, file_num):
+    file_num = int(file_num)
     if file_num <1:
         raise Exception(f'file_num should be large then 1, cur file_num is {file_num}')
 
