@@ -27,4 +27,6 @@ sub
 **/Tencent*
 **/config_local.py
 
+**/*remote.ipynb
+
 

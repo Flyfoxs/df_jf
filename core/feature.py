@@ -8,6 +8,7 @@ import matplotlib.pyplot as plot
 from file_cache.cache import file_cache
 import numpy as np
 from functools import lru_cache
+from munch import *
 
 def get_predict_col():
     col_list = [col for col in list(date_type.keys()) if 'var' in col]
@@ -244,16 +245,18 @@ def get_train_feature(wtid, col, args):
     missing_block = block.loc[(block.wtid == wtid) & (block.col == col) & (block.kind == 'missing')]
 
     for missing_length in missing_block['length'].sort_values().values:
-        window_ratio = options().window
-        cur_windows = max(1, round(missing_length * window_ratio))
+        window_ratio = args.window
+        cur_windows = max(1, missing_length * window_ratio)
+        cur_windows = int(cur_windows)
         # if args.file_num==1:
         #     cur_windows = round(missing_length * 0.7)
         # else:
         #     cur_windows = missing_length * 2
         at_least_len = missing_length + 2 * cur_windows
         logger.debug(
-            f'get_train_feature:file_num={args.file_num}, at_least_len={at_least_len}, window={cur_windows}, missing_len={missing_length} {train_block[train_block["length"]>=at_least_len].shape}')
+            f'get_train_feature:file_num={args.file_num}, at_least_len={at_least_len}, cur_window={cur_windows}, missing_len={missing_length} {train_block[train_block["length"]>=at_least_len].shape}')
         for index, cur_block in (train_block[train_block['length'] >= at_least_len]).iterrows():
+
             if args.file_num==1:
                 train = get_train_ex(wtid)[[col, 'time_sn', ]]
             else:
@@ -277,14 +280,18 @@ def get_train_feature(wtid, col, args):
             logger.debug(f'blockid:{index} , original  train_t_sn:{train_feature.time_sn.min()}, {train_feature.time_sn.min()},'
                          f' val_time_sn:{val_feature.time_sn.min()}:{val_feature.time_sn.max()}')
 
-            time_gap = val_feature.time_sn.max() - val_feature.time_sn.min()
-            time_begin = val_feature.time_sn.min() - 2 * time_gap
-            time_end = val_feature.time_sn.max() + 2 * time_gap
+            time_gap = max(30,val_feature.time_sn.max() - val_feature.time_sn.min())
+            time_begin = val_feature.time_sn.min() - 5 * time_gap
+            time_end = val_feature.time_sn.max() + 5 * time_gap
             # Make the train closed to validate
             train_feature = train_feature[(train_feature.time_sn >= time_begin) & (train_feature.time_sn <= time_end)]
 
             logger.debug(f'blockid:{index} new train_t_sn:{train_feature.time_sn.min()}, {train_feature.time_sn.min()},'
                          f' val_time_sn:{val_feature.time_sn.min()}:{val_feature.time_sn.max()}')
+
+            if len(train_feature) == 0 :
+                logger.exception(f'Train feature length is none, blockid#{index}')
+                raise Exception(f'Train feature length is none, blockid#{index}')
             feature_list.append((train_feature, val_feature, index))
             # logger.debug(f'Train:{train_feature.shape}, Val:{val_feature.shape}')
 
@@ -572,6 +579,7 @@ def options():
     parser.add_argument("--cut_len", help="fill begin, end of the val with ffill/bfill directly", type=int, default=100)
     parser.add_argument("--top_threshold", help="If the top#2 arrive ?%, then just use ffile", type=float, default=0.6)
     parser.add_argument("-D", '--debug', action='store_true', default=False)
+    parser.add_argument("-W", '--warning', action='store_true', default=False)
     parser.add_argument('--version', type=str, default='0129')
     parser.add_argument('--window', type=float, default=0.7, help='It control how many sample will be choose: window*len(test)')
 
@@ -581,10 +589,20 @@ def options():
 
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
+    elif args.warning:
+        logging.getLogger().setLevel(logging.WARNING)
     else:
         logging.getLogger().setLevel(logging.INFO)
 
+
+
+
+
+
+
+
     return args
+
 
 if __name__ == '__main__':
 
