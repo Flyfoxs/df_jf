@@ -1,6 +1,7 @@
 import sys
 import os
 
+from tqdm import tqdm
 from core.config import *
 import pandas as pd
 from file_cache.utils.util_pandas import *
@@ -13,51 +14,51 @@ from munch import *
 def get_predict_col():
     col_list = [col for col in list(date_type.keys()) if 'var' in col]
     return sorted(col_list)
+#
+# @file_cache()
+# def get_input_analysis(gp_type='missing'):
+#     df = pd.DataFrame()
+#
+#     for wtid in range(1, 34):
+#         wtid = str(wtid)
+#         train = pd.read_csv(f"./input/{wtid.rjust(3,'0')}/201807.csv")
+#         logger.debug(f'================{wtid}================')
+#         logger.debug(f'{train.shape}, {train.wtid.min()}, {train.wtid.max()}')
+#         summary = {}
+#         for col in train:
+#             if gp_type == 'missing':
+#                 summary[col] = int(pd.isna(train[col]).sum())
+#             elif gp_type =='max':
+#                 summary[col] = train[col].max()
+#             elif gp_type == 'min':
+#                 summary[col] = train[col].min()
+#             elif gp_type == 'nunique':
+#                 summary[col] = train[col].nunique()
+#             else:
+#                 raise Exception('Unknown gp_type:%s' % gp_type)
+#
+#         summary['wtid'] = wtid
+#         summary['total'] =  len(train)
+#         #logger.debug(summary)
+#         df = df.append(summary, ignore_index=True)
+#     return df
 
-@file_cache()
-def get_input_analysis(gp_type='missing'):
-    df = pd.DataFrame()
-
-    for wtid in range(1, 34):
-        wtid = str(wtid)
-        train = pd.read_csv(f"./input/{wtid.rjust(3,'0')}/201807.csv") 
-        logger.debug(f'================{wtid}================')
-        logger.debug(f'{train.shape}, {train.wtid.min()}, {train.wtid.max()}')
-        summary = {}
-        for col in train:
-            if gp_type == 'missing':
-                summary[col] = int(pd.isna(train[col]).sum())
-            elif gp_type =='max':
-                summary[col] = train[col].max()
-            elif gp_type == 'min':
-                summary[col] = train[col].min()
-            elif gp_type == 'nunique':
-                summary[col] = train[col].nunique()
-            else:
-                raise Exception('Unknown gp_type:%s' % gp_type)
-
-        summary['wtid'] = wtid
-        summary['total'] =  len(train) 
-        #logger.debug(summary)
-        df = df.append(summary, ignore_index=True)
-    return df
-
-
-def get_analysis_enum():
-    col_list = ['wtid','var053','var066','var016','var020','var047',  ]
-
-    train_list = []
-    for wtid in range(1, 34):
-        wtid = str(wtid)
-        train = pd.read_csv(f"./input/{wtid.rjust(3,'0')}/201807.csv", usecols=col_list)
-        train = train.groupby(col_list).agg({'wtid':'count'})
-        train.rename(index=str, columns={"wtid": "count"}, inplace=True)
-        train = train.reset_index()
-        #print(train.shape)
-        train_list.append(train)
-
-    all = pd.concat(train_list)
-    return all
+#
+# def get_analysis_enum():
+#     col_list = ['wtid','var053','var066','var016','var020','var047',  ]
+#
+#     train_list = []
+#     for wtid in range(1, 34):
+#         wtid = str(wtid)
+#         train = pd.read_csv(f"./input/{wtid.rjust(3,'0')}/201807.csv", usecols=col_list)
+#         train = train.groupby(col_list).agg({'wtid':'count'})
+#         train.rename(index=str, columns={"wtid": "count"}, inplace=True)
+#         train = train.reset_index()
+#         #print(train.shape)
+#         train_list.append(train)
+#
+#     all = pd.concat(train_list)
+#     return all
 
 
 @lru_cache()
@@ -136,7 +137,7 @@ def get_missing_block_all():
     return df
 
 @file_cache()
-def get_train_block_all():
+def get_data_block_all():
     missing = get_missing_block_all()
     df_list = []
     for wtid in range(1, 34):
@@ -170,7 +171,7 @@ def get_train_block_all():
 
 @lru_cache()
 def get_blocks():
-    train = get_train_block_all()
+    train = get_data_block_all()
 
     missing = get_missing_block_all()
 
@@ -228,7 +229,7 @@ def get_missing_block_single(wtid, col, cur_missing):
 
 
 
-def get_train_feature(wtid, col, args):
+def get_train_sample_list(wtid, col, args):
     feature_list = []
 
     block = get_blocks()
@@ -507,7 +508,7 @@ def get_pure_block_list(kind='data'):
 #     return block.loc[block.wtid.isin(wtid_list)]
 
 
-def get_train_rename(wtid, col_name, key=None):
+def rename_col_for_merge_across_wtid(wtid, col_name, key=None):
     if key is None:
         key = wtid
     train = get_train_ex(wtid)[[col_name, 'time_sn', 'time_slot_7']]
@@ -518,10 +519,10 @@ def get_train_rename(wtid, col_name, key=None):
 @lru_cache()
 @file_cache()
 def get_corr_wtid(col_name):
-    train = get_train_rename(1, col_name)
+    train = rename_col_for_merge_across_wtid(1, col_name)
 
     for wtid in range(2, 34):
-        train_tmp = get_train_rename(wtid, col_name)
+        train_tmp = rename_col_for_merge_across_wtid(wtid, col_name)
         train = train.merge(train_tmp, on=['time_slot_7'])
         train = train.drop_duplicates('time_slot_7')
         logger.debug(f'col#{col_name}, the shpae after wtid:{wtid} is:{train.shape}')
@@ -548,7 +549,7 @@ def get_corr_wtid(col_name):
     return cor
 
 
-@lru_cache(maxsize=2)
+@lru_cache(maxsize=64)
 @timed()
 def get_train_feature_multi_file(wtid, col, file_num):
     file_num = int(file_num)
@@ -561,12 +562,12 @@ def get_train_feature_multi_file(wtid, col, file_num):
                 f'{dict(zip(related_wtid_list.index,np.round(related_wtid_list.values,3)))}')
     related_wtid_list = [int(col.split('_')[1]) for col in related_wtid_list.index]
 
-    train = get_train_rename(wtid, col)
+    train = rename_col_for_merge_across_wtid(wtid, col)
     input_len = len(train)
     train = train.rename(columns={f'{col}_{wtid}':col})
     train['id']=train.index
     for related_wtid in related_wtid_list:
-        train_tmp = get_train_rename(related_wtid, col)
+        train_tmp = rename_col_for_merge_across_wtid(related_wtid, col)
         train_tmp = train_tmp.drop(axis='column', columns=['time_sn'])
         train = train.merge(train_tmp, how='left', on=['time_slot_7'])
         train = train.drop_duplicates(['id'])
