@@ -77,24 +77,24 @@ def get_cut_predict(train, val, args):
 
     clf.fit(train.iloc[:, 1:], train.iloc[:, 0])
 
-    if isinstance(val, pd.DataFrame):
-        cut_len = min(momenta_impact_length, len(val)//3)
+    cut_len = min(momenta_impact_length, len(val)//3)
 
-        block_begin = val.index.min()
-        block_end = val.index.max()
-        logger.debug(f'val block:[{block_begin}, {block_end}], {val.columns}')
+    block_begin = val.index.min()
+    block_end = val.index.max()
+    logger.debug(f'val block:[{block_begin}, {block_end}], {val.columns}')
 
-        logger.debug(f'train:{train.shape}, val{val.shape}')
+    logger.debug(f'train:{train.shape}, val{val.shape}')
 
-        begin_val=train.iloc[:, 0].loc[:(block_begin - 1)].tail(momenta_col_length).values
-        end_val = train.iloc[:, 0].loc[(block_end + 1):].head(momenta_col_length).values
+    begin_val_arr=train.iloc[:, 0].loc[:(block_begin - 1)].tail(momenta_col_length).values
+    end_val_arr = train.iloc[:, 0].loc[(block_end + 1):].head(momenta_col_length).values
 
-        begin_val, end_val = get_momenta_value(begin_val, end_val )
+    begin_val, end_val = get_momenta_value(begin_val_arr, end_val_arr )
 
-        return np.hstack((np.ones(cut_len) * begin_val,
-                          clf.predict(val.iloc[cut_len:len(val)-cut_len]),
-                          np.ones(cut_len) * end_val
-                          ))
-    else:
-        return clf.predict(val)
+    logger.debug(f'====Begin_val:{begin_val}:{begin_val_arr}, end_val:{begin_val}:{end_val_arr}, ')
+
+    return np.hstack((np.ones(cut_len) * begin_val,
+                      clf.predict(val.iloc[cut_len:len(val)-cut_len]),
+                      np.ones(cut_len) * end_val
+                      ))
+
 

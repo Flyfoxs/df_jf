@@ -191,7 +191,7 @@ def get_break_block():
         train = get_train_ex(wtid)
         train = train[date_type.keys()]
 
-def get_missing_block_for_col(wtid, col, window=100):
+def get_missing_block_for_col(wtid, col):
     train = get_train_ex(wtid)
     missing_list = train[pd.isna(train[col])].index
 
@@ -203,7 +203,7 @@ def get_missing_block_for_col(wtid, col, window=100):
             continue
 
         block_count += 1
-        begin, end, train = get_missing_block_single(wtid, col, missing, window)
+        begin, end = get_missing_block_single(wtid, col, missing)
         block_list.append((begin, end))
 
         last_missing = end
@@ -220,19 +220,11 @@ def get_missing_block_for_col(wtid, col, window=100):
 
 
 
-def get_missing_block_single(wtid, col, cur_missing, window=100):
+def get_missing_block_single(wtid, col, cur_missing):
     train = get_train_ex(wtid)
-    begin = train[col].loc[:cur_missing].dropna().index.max() + 1
-    end   = train[col].loc[cur_missing:].dropna().index.min() - 1
-
-    train_col_list = [col, 'time_sn' ]
-    train_before = train[train_col_list].iloc[:begin].dropna(how='any').iloc[-window:]
-
-    train_after = train[train_col_list].iloc[end+1:].dropna(how='any').iloc[:window]
-
-    train = pd.concat([train_before, train_after])
-
-    return begin, end, train
+    begin = train[col].loc[:cur_missing].dropna(how='any').index.max() + 1
+    end   = train[col].loc[cur_missing:].dropna(how='any').index.min() - 1
+    return begin, end
 
 
 
@@ -292,9 +284,10 @@ def get_train_df_by_val(train,val_feature, args):
         val_begin = val_feature.index.min()
         val_end = val_feature.index.max()
 
-        begin = val_begin - cur_windows
+        begin = max(val_begin - cur_windows, 0)
         end = val_end + cur_windows
-
+        logger.debug(f'part#1:{begin},{val_begin}')
+        logger.debug(f'part#2:{val_end+1},{end+1}')
         part1 = train.iloc[begin : val_begin]
         part2 = train.iloc[val_end+1 : end+1]
 
@@ -312,7 +305,7 @@ def get_train_df_by_val(train,val_feature, args):
         logger.debug(f'Range: Train_val: '
                      f'[{part1.index.min()}, {part1.index.max()} ]({len(part1)}) '
                      f'[{val_feature.index.min()}, {val_feature.index.max()}]({len(val_feature)}), '
-                     f'[{part2.index.min()}, {part2.index.max()} ]({len(part2)})' )
+                     f'[{part2.index.min()}, {part2.index.max()} ]({len(part2)}), cur_windows:{cur_windows}' )
 
     except Exception  as e:
         logger.exception(f'Can not get train for val block:{val_begin}:{val_end}, {args}')

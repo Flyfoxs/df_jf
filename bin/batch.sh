@@ -1,5 +1,5 @@
 
-./bin/train.sh --file_num 0 --cut_len 300 --top_threshold 0.6 --version 0201_v1 --window=0.7
+./bin/train.sh --version 0203 -L
 #./bin/train.sh --file_num 0 --cut_len 500 --top_threshold 0.6 --version 1030_v5 --window=0.6
 #./bin/train.sh --file_num 0 --cut_len 500 --top_threshold 0.6 --version 1030_v5 --window=0.4
 

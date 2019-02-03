@@ -107,7 +107,7 @@ def check_score_all():
                                 score = check_score(args)
                                 logger.debug(f'Current score is{score:.4f} wtih:{args}')
 
-                                score_file = f'./score/{col_name}.h5'
+                                score_file = f'./score/{wtid:02}/{col_name}.h5'
                                 if os.path.exists(score_file):
                                     score_df = pd.read_hdf(score_file)
                                 else:
@@ -116,6 +116,7 @@ def check_score_all():
 
                                 score_df = score_df.append(args, ignore_index=True)
                                 logger.info(f'Save {score_df.shape} to file:{score_file}')
+                                os.makedirs(f'./score/{wtid:02}', exist_ok=True)
                                 score_df.to_hdf(score_file,'score')
 
 def check_options():
@@ -145,7 +146,7 @@ def check_options():
         logging.getLogger().setLevel(logging.INFO)
 
     if args.log:
-        file = f'score_{args.wtid:2}_{args.col_begin:2}_{args.col_end:2}.log'
+        file = f'score_{args.wtid:02}_{args.col_begin:02}_{args.col_end:02}.log'
         handler = logging.FileHandler(file, 'a')
         handler.setFormatter(format)
         logger.addHandler(handler)
@@ -154,11 +155,41 @@ def check_options():
 
 
 @lru_cache()
+def merge_score_col(col_name):
+    import os
+    df_list = []
+    from glob import glob
+    for file_name in sorted(glob("./score/*.h5")):
+        if col_name in file_name:
+            tmp_df = pd.read_hdf(file_name)
+            df_list.append(tmp_df)
+    all = pd.concat(df_list)
+    logger.info(f'There are {len(df_list)} score files for {col_name}')
+    return all
+
+
+@lru_cache()
+@timed()
 def get_best_para(col_name, wtid=None, top_n=0):
-    tmp = pd.read_hdf(f'./score/{col_name}.h5')
-    if wtid >=1 :
+
+    if wtid is None or wtid <1 :
+        tmp = merge_score_col(col_name)
+
+        col_list = tmp.columns
+        col_list = col_list.drop('score')
+        col_list = col_list.drop('wtid')
+        col_list = col_list.drop('ct')
+        #col_list = col_list.drop('col_name')
+        print(col_list)
+        tmp = tmp.groupby(list(col_list)).agg({'score':['mean', 'count','nunique','min', 'max'], 'wtid':'nunique'}).reset_index()
+        tmp.columns = ['_'.join(item) if item[1] else item[0] for item in tmp.columns]
+        tmp = tmp.sort_values(['score_mean', 'score_count'], ascending=False)
+        tmp = tmp.rename(columns={'score_mean':'score'})
+    else:
+        wtid =  int(wtid)
+        tmp = pd.read_hdf(f'./score/{col_name}.h5')
         tmp = tmp.loc[tmp.wtid==wtid]
-    tmp = tmp.sort_values(['score', 'ct'], ascending=[False, True]).reset_index(drop=True)
+        tmp = tmp.sort_values(['score', 'ct'], ascending=[False, True]).reset_index(drop=True)
     return tmp.iloc[int(top_n)]
 
 
