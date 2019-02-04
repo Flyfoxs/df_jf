@@ -238,6 +238,8 @@ def get_train_sample_list(wtid, col, args):
 
     missing_block = block.loc[(block.wtid == wtid) & (block.col == col) & (block.kind == 'missing')]
 
+    train = get_train_feature_multi_file(wtid, col, args.file_num)
+
     for missing_length in missing_block['length'].sort_values().values:
 
         # if args.file_num==1:
@@ -248,12 +250,8 @@ def get_train_sample_list(wtid, col, args):
         logger.debug(
             f'get_train_feature:file_num={args.file_num}, at_least_len_for_block={at_least_len_for_block},  '
             f'missing_len={missing_length}')
+
         for index, cur_block in (train_block[train_block['length'] >= at_least_len_for_block]).iterrows():
-
-
-            train = get_train_feature_multi_file(wtid, col, args.file_num)
-
-
             begin, end = cur_block.begin, cur_block.end
             # Get the data without missing
             block = train.loc[begin:end]
@@ -265,8 +263,6 @@ def get_train_sample_list(wtid, col, args):
             logger.debug(f'blockid:{index} , train_shape:{train_feature.shape} '
                          f'train_t_sn:{train_feature.time_sn.min()}, {train_feature.time_sn.min()},'
                          f' val_time_sn:{val_feature.time_sn.min()}:{val_feature.time_sn.max()}')
-
-
 
             feature_list.append((train_feature, val_feature, index))
             # logger.debug(f'Train:{train_feature.shape}, Val:{val_feature.shape}')

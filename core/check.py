@@ -10,7 +10,7 @@ import fire
 from core.predict import *
 
 @timed()
-def check_score(args, pic=False):
+def check_score(args, pic_num=0):
     """
 
     :param wtid:
@@ -37,15 +37,15 @@ def check_score(args, pic=False):
 
     count, loss = 0, 0
 
-    if pic ==True:
-        train_list = train_list[:10]
+    if pic_num ==True:
+        train_list = train_list[:pic_num]
     for train, val, blockid in train_list :
 
         is_enum = True if 'int' in date_type[col].__name__ else False
         logger.debug(f'Blockid#{blockid}, train:{train.shape}, val:{val.shape}, file_num:{args.file_num}')
         check_fn = get_predict_fun(blockid, train, args)
 
-        if pic:
+        if pic_num:
             plt.figure(figsize=(20, 5))
             for color, data in zip(['#ff7f0e', '#2ca02c'], [train, val]):
                 plt.scatter(data.time_sn, data[col], c=color)
@@ -66,6 +66,16 @@ def check_score(args, pic=False):
     return avg_loss
 
 
+def summary_all_score():
+    df = pd.DataFrame()
+    for col in get_predict_col():
+        df = df.append(get_best_para(col, None, 0), ignore_index=True)
+
+    df['data_type'] = df.col_name.apply(lambda val: date_type[val].__name__)
+
+    return df.sort_values('score').reset_index(drop=True)
+
+
 @timed()
 def check_score_all():
 
@@ -74,12 +84,46 @@ def check_score_all():
 
     pool = ThreadPool(check_options().thread)
 
-    pool.map(check_score_column, range(1, 69),chunksize=1)
+    summary = summary_all_score()
+    col_list = summary.loc[summary.score<=1.9].col_name
+
+    pool.map(check_score_column, col_list,chunksize=1)
 
     logger.debug(f'It is done for {check_options().wtid}')
 
+def get_window(col_name):
+    return np.arange(0.5, 1.5, 0.2)
+
+def get_momenta_col_length(col_name):
+    is_enum = True if 'int' in date_type[col_name].__name__ else False
+    if is_enum:
+        return [0]
+    else:
+        return range(1, 10, 2)
+
+def get_momenta_impact_length(col_name):
+    is_enum = True if 'int' in date_type[col_name].__name__ else False
+    if is_enum:
+        return [0]
+    else:
+        return [100, 200, 300]
+
+def get_time_sn(col_name):
+    is_enum = True if 'int' in date_type[col_name].__name__ else False
+    if is_enum:
+        return [False]
+    else:
+        return [True, False]
+
+def get_file_num(col_name):
+    is_enum = True if 'int' in date_type[col_name].__name__ else False
+    if is_enum:
+        return [1]
+    else:
+        return range(1,6)
+
 @timed()
-def check_score_column(col_name_sn):
+def check_score_column(col_name):
 
 
     wtid = check_options().wtid
@@ -91,23 +135,25 @@ def check_score_column(col_name_sn):
     drop_threshold = 1
     class_name = 'lr'
 
-    col_name = f"var{str(col_name_sn).rjust( 3, '0',)}"
+    #col_name = f"var{str(col_name_sn).rjust( 3, '0',)}"
     score_file = f'./score/{wtid:02}/{col_name}.h5'
     if os.path.exists(score_file):
         score_df = pd.read_hdf(score_file)
+        logger.warning(f'Already existing file:{score_df.shape}, {score_file}')
+        return None
     else:
         score_df = pd.DataFrame()
+        #lock the partition
+        os.makedirs(f'./score/{wtid:02}', exist_ok=True)
+        score_df.to_hdf(score_file, 'score')
 
 
-    #app_args = check_options()
-
-
-    for window in tqdm(np.arange(0.5, 1.5, 0.2)):
+    for window in tqdm(get_window(col_name)):
         window = round(window, 1)
-        for momenta_col_length in range(1, 20, 4):
-            for momenta_impact_length in [100, 200, 300]:
-                for time_sn in [True, False]:
-                    for file_num in range(1, 6):
+        for momenta_col_length in get_momenta_col_length(col_name) :
+            for momenta_impact_length in get_momenta_impact_length(col_name):
+                for time_sn in get_time_sn(col_name):
+                    for file_num in get_file_num(col_name):
                         args = {'wtid': wtid,
                                 'col_name': col_name,
                                 'file_num': file_num,
@@ -130,7 +176,7 @@ def check_score_column(col_name_sn):
 
                         score_df = score_df.append(args, ignore_index=True)
 
-    os.makedirs(f'./score/{wtid:02}', exist_ok=True)
+
     score_df.to_hdf(score_file, 'score')
     logger.info(f'Save {score_df.shape} to file:{score_file}')
 
@@ -144,7 +190,7 @@ def check_options():
     parser.add_argument("-D", '--debug', action='store_true', default=False)
     parser.add_argument("-W", '--warning', action='store_true', default=False)
     parser.add_argument("-L", '--log', action='store_true', default=False)
-    parser.add_argument("--thread", type=int, default=7)
+    parser.add_argument("--thread", type=int, default=3)
 
 
     # parser.add_argument("--version", help="check version", type=str, default='lg')
@@ -158,7 +204,10 @@ def check_options():
         logging.getLogger().setLevel(logging.INFO)
 
     if args.log:
-        file = f'score_{args.wtid:02}.log'
+        import socket
+        host_name = socket.gethostname()[-1:]
+        file = f'score_{args.wtid:02}_{host_name}.log'
+
         handler = logging.FileHandler(file, 'a')
         handler.setFormatter(format)
         logger.addHandler(handler)
@@ -172,6 +221,10 @@ def merge_score_col(col_name):
     import os
     df_list = []
     from glob import glob
+    # for file_name in sorted(glob("./score/*/*.h5")):
+    #     if col_name in file_name:
+    #         tmp_df = pd.read_hdf(file_name)
+    #         df_list.append(tmp_df)
     for file_name in sorted(glob("./score/*.h5")):
         if col_name in file_name:
             tmp_df = pd.read_hdf(file_name)

@@ -92,7 +92,7 @@ def options():
     import argparse
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--file_num", help="How many files need to merge to train set", type=int, default=1)
+   # parser.add_argument("--file_num", help="How many files need to merge to train set", type=int, default=1)
 
     #Base on the latest data, not the avg
     parser.add_argument("--cut_len", help="fill begin, end of the val with ffill/bfill directly", type=int, default=100)
@@ -102,7 +102,7 @@ def options():
     parser.add_argument('--version', type=str, default='0129')
     parser.add_argument('--wtid', type=int, default=-1)
     parser.add_argument('--top_n', type=int, default=0)
-    parser.add_argument('--window', type=float, default=0.7, help='It control how many sample will be choose: window*len(test)')
+    #parser.add_argument('--window', type=float, default=0.7, help='It control how many sample will be choose: window*len(test)')
     parser.add_argument("-L", '--log', action='store_true', default=False)
 
 

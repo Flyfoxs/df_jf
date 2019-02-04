@@ -30,8 +30,8 @@ def predict_stable_col(train, val, threshold=0.5):
 
         return np.hstack((res_1, res_2))
     else:
-        logger.error(f'Cur ration is {cur_ratio}, threshold: {threshold}')
-        return None
+        logger.exception(f'Cur ration is {cur_ratio}, threshold: {threshold}, {train.columns}')
+        raise Exception(f'Train is not stable:{train.columns}')
 
 def get_momenta_value(arr_begin, arr_end):
 
