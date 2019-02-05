@@ -1,7 +1,7 @@
 import sys
 import os
 
-from tqdm import tqdm
+
 from core.config import *
 import pandas as pd
 from file_cache.utils.util_pandas import *
@@ -10,6 +10,8 @@ from file_cache.cache import file_cache
 import numpy as np
 from functools import lru_cache
 from munch import *
+import json
+
 
 def get_predict_col():
     col_list = [col for col in list(date_type.keys()) if 'var' in col]
@@ -228,8 +230,12 @@ def get_missing_block_single(wtid, col, cur_missing):
     return begin, end
 
 
+#TODO
+#@timed()
+@lru_cache(maxsize=cache_size)
+def get_train_sample_list(wtid, col, file_num, window):
 
-def get_train_sample_list(wtid, col, args):
+    # args = DefaultMunch(None, json.loads(args_json))
     feature_list = []
 
     block = get_blocks()
@@ -237,8 +243,12 @@ def get_train_sample_list(wtid, col, args):
     train_block = block.loc[(block.wtid == wtid) & (block.col == col) & (block.kind == 'train')]
 
     missing_block = block.loc[(block.wtid == wtid) & (block.col == col) & (block.kind == 'missing')]
-
-    train = get_train_feature_multi_file(wtid, col, args.file_num)
+    #
+    # from asyncio import Lock
+    #
+    # lock = Lock()
+    # with lock:
+    train = get_train_feature_multi_file(wtid, col, file_num)
 
     for missing_length in missing_block['length'].sort_values().values:
 
@@ -248,7 +258,7 @@ def get_train_sample_list(wtid, col, args):
         #     cur_windows = missing_length * 2
         at_least_len_for_block = int(10 * missing_length)
         logger.debug(
-            f'get_train_feature:file_num={args.file_num}, at_least_len_for_block={at_least_len_for_block},  '
+            f'get_train_feature:file_num={file_num}, at_least_len_for_block={at_least_len_for_block},  '
             f'missing_len={missing_length}')
 
         for index, cur_block in (train_block[train_block['length'] >= at_least_len_for_block]).iterrows():
@@ -258,7 +268,7 @@ def get_train_sample_list(wtid, col, args):
 
             val_feature = block.iloc[-missing_length*4: -missing_length*3]
 
-            train_feature = get_train_df_by_val(train, val_feature, args)
+            train_feature = get_train_df_by_val(train, val_feature, window) #Train
 
             logger.debug(f'blockid:{index} , train_shape:{train_feature.shape} '
                          f'train_t_sn:{train_feature.time_sn.min()}, {train_feature.time_sn.min()},'
@@ -270,9 +280,9 @@ def get_train_sample_list(wtid, col, args):
     return feature_list
 
 
-def get_train_df_by_val(train,val_feature, args):
+def get_train_df_by_val(train,val_feature, window):
     try:
-        window_ratio = args.window
+        window_ratio = window
         missing_length = len(val_feature)
 
         cur_windows = max(3, missing_length * window_ratio)
@@ -334,7 +344,7 @@ def get_submit_feature_by_block_id(blockid, para ):
     logger.debug(f'wtid:{wtid}, col:{col_name}, file_num:{para.file_num},   blockid:{blockid}')
     logger.debug(f'Train columns:{submit.columns}')
 
-    train_feature = get_train_df_by_val(submit, val_feature, para)
+    train_feature = get_train_df_by_val(submit, val_feature, para.window) #submit
 
     logger.debug(f'original: {train_feature.shape}, {val_feature.shape}')
     #
@@ -543,7 +553,6 @@ def get_corr_wtid(col_name):
     logger.debug(cor.where(cor < 0.99).idxmax().to_frame().T)
 
     return cor
-
 
 @lru_cache(maxsize=64)
 @timed()

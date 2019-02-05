@@ -31,9 +31,7 @@ def check_score(args, pic_num=0):
     wtid = args['wtid']
     col = args['col_name']
 
-    train_list = get_train_sample_list(wtid, col, args)
-
-    train_list = sorted(train_list, key=lambda val: len(val[1]), reverse=True)
+    train_list = get_train_sample_list(wtid, col, args.file_num, args.window)
 
     count, loss = 0, 0
 
@@ -82,12 +80,13 @@ def check_score_all():
     from multiprocessing.dummy import Pool as ThreadPool #线程
     #from multiprocessing import Pool as ThreadPool  # 进程
 
+    logger.info(f"Start a poll with size:{check_options().thread}")
     pool = ThreadPool(check_options().thread)
 
     summary = summary_all_score()
     col_list = summary.loc[summary.score<=1.9].col_name
 
-    pool.map(check_score_column, col_list,chunksize=1)
+    pool.map(check_score_column, col_list)
 
     logger.debug(f'It is done for {check_options().wtid}')
 
@@ -147,7 +146,7 @@ def check_score_column(col_name):
         os.makedirs(f'./score/{wtid:02}', exist_ok=True)
         score_df.to_hdf(score_file, 'score')
 
-
+    from tqdm import tqdm
     for window in tqdm(get_window(col_name)):
         window = round(window, 1)
         for momenta_col_length in get_momenta_col_length(col_name) :
@@ -164,7 +163,6 @@ def check_score_column(col_name):
                                 'drop_threshold': drop_threshold,
                                 'time_sn': time_sn,
                                 'class_name': class_name,
-                                'ct': pd.to_datetime('now')
                                 }
                         args = DefaultMunch(None, args)
 
@@ -173,6 +171,7 @@ def check_score_column(col_name):
 
 
                         args['score'] = score
+                        args['ct'] = pd.to_datetime('now')
 
                         score_df = score_df.append(args, ignore_index=True)
 
