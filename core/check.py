@@ -77,8 +77,8 @@ def summary_all_score():
 @timed()
 def check_score_all():
 
-    from multiprocessing.dummy import Pool as ThreadPool #线程
-    #from multiprocessing import Pool as ThreadPool  # 进程
+    #from multiprocessing.dummy import Pool as ThreadPool #线程
+    from multiprocessing import Pool as ThreadPool  # 进程
 
     logger.info(f"Start a poll with size:{check_options().thread}")
     pool = ThreadPool(check_options().thread)
@@ -189,7 +189,7 @@ def check_options():
     parser.add_argument("-D", '--debug', action='store_true', default=False)
     parser.add_argument("-W", '--warning', action='store_true', default=False)
     parser.add_argument("-L", '--log', action='store_true', default=False)
-    parser.add_argument("--thread", type=int, default=3)
+    parser.add_argument("--thread", type=int, default=8)
 
 
     # parser.add_argument("--version", help="check version", type=str, default='lg')

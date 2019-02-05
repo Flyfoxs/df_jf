@@ -232,7 +232,7 @@ def get_missing_block_single(wtid, col, cur_missing):
 
 #TODO
 #@timed()
-@lru_cache(maxsize=cache_size)
+@lru_cache(maxsize=32)
 def get_train_sample_list(wtid, col, file_num, window):
 
     # args = DefaultMunch(None, json.loads(args_json))
