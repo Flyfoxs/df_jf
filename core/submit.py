@@ -63,12 +63,19 @@ def predict_all(version):
     score_avg = estimate_score(args.top_n, args.wtid)
     logger.info(f'The validate score is {score_avg} for args:{args}')
 
-    train_list = []
-    from tqdm import tqdm
-    for wtid in tqdm(range(1, 34)):
-        train_ex =  predict_wtid(wtid)
-        #train_ex = train_ex.set_index(['ts', 'wtid'])
-        train_list.append(train_ex)
+    # train_list = []
+
+    # from tqdm import tqdm
+    # for wtid in tqdm(range(1, 34)):
+    #     train_ex =  predict_wtid(wtid)
+    #     #train_ex = train_ex.set_index(['ts', 'wtid'])
+    #     train_list.append(train_ex)
+
+    from multiprocessing import Pool as ThreadPool  # 进程
+
+    pool = ThreadPool(8)
+    train_list  = pool.map(predict_wtid, range(1, 34))
+
     train_all = pd.concat(train_list)#.set_index(['ts', 'wtid'])
 
 

@@ -64,10 +64,10 @@ def check_score(args, pic_num=0):
     return avg_loss
 
 
-def summary_all_score():
+def summary_all_best_score(wtid=None, top_n=0):
     df = pd.DataFrame()
     for col in get_predict_col():
-        df = df.append(get_best_para(col, None, 0), ignore_index=True)
+        df = df.append(get_best_para(col, wtid, top_n), ignore_index=True)
 
     df['data_type'] = df.col_name.apply(lambda val: date_type[val].__name__)
 
@@ -83,7 +83,7 @@ def check_score_all():
     logger.info(f"Start a poll with size:{check_options().thread}")
     pool = ThreadPool(check_options().thread)
 
-    summary = summary_all_score()
+    summary = summary_all_best_score()
     col_list = summary.loc[summary.score<=1.9].col_name
 
     pool.map(check_score_column, col_list)
@@ -135,7 +135,7 @@ def check_score_column(col_name):
     class_name = 'lr'
 
     #col_name = f"var{str(col_name_sn).rjust( 3, '0',)}"
-    score_file = f'./score/{wtid:02}/{col_name}.h5'
+    score_file = f'./score/{class_name}/{wtid:02}/{col_name}.h5'
     if os.path.exists(score_file):
         score_df = pd.read_hdf(score_file)
         logger.warning(f'Already existing file:{score_df.shape}, {score_file}')
@@ -143,7 +143,7 @@ def check_score_column(col_name):
     else:
         score_df = pd.DataFrame()
         #lock the partition
-        os.makedirs(f'./score/{wtid:02}', exist_ok=True)
+        os.makedirs(f'./score/{class_name}/{wtid:02}', exist_ok=True)
         score_df.to_hdf(score_file, 'score')
 
     from tqdm import tqdm
@@ -216,20 +216,24 @@ def check_options():
 
 
 @lru_cache()
-def merge_score_col(col_name):
+def merge_score_col(col_name, wtid):
     import os
     df_list = []
     from glob import glob
-    # for file_name in sorted(glob("./score/*/*.h5")):
-    #     if col_name in file_name:
-    #         tmp_df = pd.read_hdf(file_name)
-    #         df_list.append(tmp_df)
-    for file_name in sorted(glob("./score/*.h5")):
+    # ./score/lr/wtid/column.h5
+
+    wtid = f'{wtid:2}' if wtid is not None and wtid > 0 else '*'
+
+    for file_name in sorted(glob(f"./score/*/{wtid}/*.h5")):
         if col_name in file_name:
             tmp_df = pd.read_hdf(file_name)
             df_list.append(tmp_df)
+    # for file_name in sorted(glob("./score/*.h5")):
+    #     if col_name in file_name:
+    #         tmp_df = pd.read_hdf(file_name)
+    #         df_list.append(tmp_df)
     all = pd.concat(df_list)
-    logger.info(f'There are {len(df_list)} score files for {col_name}')
+    logger.info(f'There are {len(df_list)} score files for {col_name}, wtid:{wtid}')
     return all
 
 
@@ -237,24 +241,20 @@ def merge_score_col(col_name):
 @timed()
 def get_best_para(col_name, wtid=None, top_n=0):
 
-    if wtid is None or wtid <1 :
-        tmp = merge_score_col(col_name)
 
-        col_list = tmp.columns
-        col_list = col_list.drop('score')
-        col_list = col_list.drop('wtid')
-        col_list = col_list.drop('ct')
-        #col_list = col_list.drop('col_name')
-        print(col_list)
-        tmp = tmp.groupby(list(col_list)).agg({'score':['mean', 'count','nunique','min', 'max'], 'wtid':'nunique'}).reset_index()
-        tmp.columns = ['_'.join(item) if item[1] else item[0] for item in tmp.columns]
-        tmp = tmp.sort_values(['score_mean', 'score_count'], ascending=False)
-        tmp = tmp.rename(columns={'score_mean':'score'})
-    else:
-        wtid =  int(wtid)
-        tmp = pd.read_hdf(f'./score/{wtid:02}/{col_name}.h5')
-        tmp = tmp.loc[tmp.wtid==wtid]
-        tmp = tmp.sort_va(['score', 'ct'], ascending=[False, True]).reset_index(drop=True)
+    tmp = merge_score_col(col_name, wtid)
+
+    col_list = tmp.columns
+    col_list = col_list.drop('score')
+    col_list = col_list.drop('wtid')
+    col_list = col_list.drop('ct')
+    #col_list = col_list.drop('col_name')
+    print(col_list)
+    tmp = tmp.groupby(list(col_list)).agg({'score':['mean', 'count','nunique','min', 'max'], 'wtid':'nunique'}).reset_index()
+    tmp.columns = ['_'.join(item) if item[1] else item[0] for item in tmp.columns]
+    tmp = tmp.sort_values(['score_mean', 'score_count'], ascending=False)
+    tmp = tmp.rename(columns={'score_mean':'score'})
+
     return tmp.iloc[int(top_n)]
 
 
