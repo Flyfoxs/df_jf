@@ -17,7 +17,7 @@ def predict_wtid(wtid):
                     ].iterrows():
         col_name = missing_block.col
 
-        para = get_best_para(col_name, app_args.wtid_list, top_n=app_args.top_n)
+        para = get_best_para(col_name, app_args.wtid_list, top_n=app_args.top_n) #predict_wtid
 
         logger.debug(f'===Predict wtid:{wtid:2},{col_name},blockid:{blockid:6}, best_file_num:{para.file_num}, type:{missing_block.data_type}')
         train, sub = get_submit_feature_by_block_id(blockid, para)
@@ -51,7 +51,7 @@ def predict_wtid(wtid):
 def estimate_score(top_n, wtid_list):
     score_list = []
     for col_name in get_predict_col():
-        para = get_best_para(col_name, wtid_list, top_n=top_n)
+        para = get_best_para(col_name, wtid_list, top_n=top_n) #estimate_score
         score_list.append(para.score)
     return round(np.array(score_list).mean(), 4)
 
@@ -102,7 +102,7 @@ def options():
    # parser.add_argument("--file_num", help="How many files need to merge to train set", type=int, default=1)
 
     #Base on the latest data, not the avg
-    parser.add_argument("--cut_len", help="fill begin, end of the val with ffill/bfill directly", type=int, default=100)
+    #parser.add_argument("--cut_len", help="fill begin, end of the val with ffill/bfill directly", type=int, default=100)
     parser.add_argument("--top_threshold", help="If the top#2 arrive ?%, then just use ffile", type=float, default=0.6)
     parser.add_argument("-D", '--debug', action='store_true', default=False)
     parser.add_argument("-W", '--warning', action='store_true', default=False)
