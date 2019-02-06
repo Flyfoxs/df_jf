@@ -64,10 +64,10 @@ def check_score(args, pic_num=0):
     return avg_loss
 
 
-def summary_all_best_score(wtid=None, top_n=0):
+def summary_all_best_score(wtid_list=[-1], top_n=0, **kwargs):
     df = pd.DataFrame()
     for col in get_predict_col():
-        df = df.append(get_best_para(col, wtid, top_n), ignore_index=True)
+        df = df.append(get_best_para(col, wtid_list, top_n, **kwargs), ignore_index=True)
 
     df['data_type'] = df.col_name.apply(lambda val: date_type[val].__name__)
 
@@ -90,22 +90,42 @@ def check_score_all():
 
     logger.debug(f'It is done for {check_options().wtid}')
 
+
+def get_mini_args(col_name, para_name, top_n=3):
+    tmp = merge_score_col(col_name, [1,2,3])
+
+    tmp = tmp.groupby(para_name).agg({'score':['max', 'mean']})
+    tmp.columns = ['_'.join(items) for items in tmp.columns]
+    tmp = tmp.sort_values('score_mean', ascending=False)
+    return tmp.index.values[:top_n]
+
+@lru_cache()
 def get_window(col_name):
-    return np.arange(0.5, 1.5, 0.2)
+    if check_options().mini:
+        return get_mini_args(col_name, 'window',check_options().mini)
+    return np.arange(0.1, 3, 0.4)
 
+@lru_cache()
 def get_momenta_col_length(col_name):
-    is_enum = True if 'int' in date_type[col_name].__name__ else False
-    if is_enum:
-        return [0]
-    else:
-        return range(1, 10, 2)
+    if check_options().mini:
+        return get_mini_args(col_name, 'momenta_col_length',2)
 
+    is_enum = True if 'int' in date_type[col_name].__name__ else False
+    if is_enum:
+        return [1]
+    else:
+        return [1,2,3,4]
+
+@lru_cache()
 def get_momenta_impact_length(col_name):
+    if check_options().mini:
+        return get_mini_args(col_name, 'momenta_impact_length',check_options().mini)
+
     is_enum = True if 'int' in date_type[col_name].__name__ else False
     if is_enum:
         return [0]
     else:
-        return [100, 200, 300]
+        return [100, 200, 300,400, 500, 600]
 
 def get_time_sn(col_name):
     is_enum = True if 'int' in date_type[col_name].__name__ else False
@@ -114,17 +134,18 @@ def get_time_sn(col_name):
     else:
         return [True, False]
 
+@lru_cache()
 def get_file_num(col_name):
+    if check_options().mini:
+        return get_mini_args(col_name, 'file_num', check_options().mini)
     is_enum = True if 'int' in date_type[col_name].__name__ else False
     if is_enum:
         return [1]
     else:
-        return range(1,6)
+        return range(1,10,2)
 
 @timed()
 def check_score_column(col_name):
-
-
     wtid = check_options().wtid
     window = 0.7
     momenta_col_length = 1
@@ -190,6 +211,7 @@ def check_options():
     parser.add_argument("-W", '--warning', action='store_true', default=False)
     parser.add_argument("-L", '--log', action='store_true', default=False)
     parser.add_argument("--thread", type=int, default=8)
+    parser.add_argument('--mini', type=int, default=3, help='enable the Mini model' )
 
 
     # parser.add_argument("--version", help="check version", type=str, default='lg')
@@ -215,42 +237,51 @@ def check_options():
     return args
 
 
-@lru_cache()
-def merge_score_col(col_name, wtid):
+#@lru_cache()
+def merge_score_col(col_name, wtid_list):
     import os
     df_list = []
     from glob import glob
     # ./score/lr/wtid/column.h5
 
-    wtid = f'{wtid:2}' if wtid is not None and wtid > 0 else '*'
 
-    for file_name in sorted(glob(f"./score/*/{wtid}/*.h5")):
-        if col_name in file_name:
-            tmp_df = pd.read_hdf(file_name)
-            df_list.append(tmp_df)
-    # for file_name in sorted(glob("./score/*.h5")):
-    #     if col_name in file_name:
-    #         tmp_df = pd.read_hdf(file_name)
-    #         df_list.append(tmp_df)
+    for wtid in wtid_list:
+        wtid = f'{wtid:02}' if wtid is not None and wtid > 0 else '*'
+        match = f"./score/*/{wtid}/*.h5"
+        logger.debug(f'Match:{match}')
+        for file_name in sorted(glob(match)):
+            logger.debug(f'get file_name:{file_name} with {match}')
+            if col_name in file_name:
+                tmp_df = pd.read_hdf(file_name)
+                df_list.append(tmp_df)
+        # for file_name in sorted(glob("./score/*.h5")):
+        #     if col_name in file_name:
+        #         tmp_df = pd.read_hdf(file_name)
+        #         df_list.append(tmp_df)
     all = pd.concat(df_list)
-    logger.info(f'There are {len(df_list)} score files for {col_name}, wtid:{wtid}')
+    logger.debug(f'There are {len(df_list)} score files for {col_name}, wtid:{wtid_list}')
     return all
 
 
-@lru_cache()
-@timed()
-def get_best_para(col_name, wtid=None, top_n=0):
+#@lru_cache()
+def get_best_para(col_name, wtid_list=[-1], top_n=0, **kwargs):
 
 
-    tmp = merge_score_col(col_name, wtid)
+    tmp = merge_score_col(col_name, wtid_list)
+    for k, v in kwargs.items():
+        tmp_check = tmp.loc[tmp[k]<=v]
+        if len(tmp_check) == 0 :
+            logger.exception(f'Cannot find value for {k}={v}, column={col_name}, it might be enum type ')
+        else:
+            tmp = tmp_check
 
     col_list = tmp.columns
     col_list = col_list.drop('score')
     col_list = col_list.drop('wtid')
     col_list = col_list.drop('ct')
     #col_list = col_list.drop('col_name')
-    print(col_list)
-    tmp = tmp.groupby(list(col_list)).agg({'score':['mean', 'count','nunique','min', 'max'], 'wtid':'nunique'}).reset_index()
+    #print(col_list)
+    tmp = tmp.groupby(list(col_list)).agg({'score':['mean', 'count','min', 'max'], 'wtid':'nunique'}).reset_index()
     tmp.columns = ['_'.join(item) if item[1] else item[0] for item in tmp.columns]
     tmp = tmp.sort_values(['score_mean', 'score_count'], ascending=False)
     tmp = tmp.rename(columns={'score_mean':'score'})

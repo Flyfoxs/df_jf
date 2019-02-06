@@ -17,7 +17,7 @@ def predict_wtid(wtid):
                     ].iterrows():
         col_name = missing_block.col
 
-        para = get_best_para(col_name, app_args.wtid, top_n=app_args.top_n)
+        para = get_best_para(col_name, app_args.wtid_list, top_n=app_args.top_n)
 
         logger.debug(f'===Predict wtid:{wtid:2},{col_name},blockid:{blockid:6}, best_file_num:{para.file_num}, type:{missing_block.data_type}')
         train, sub = get_submit_feature_by_block_id(blockid, para)
@@ -48,10 +48,10 @@ def predict_wtid(wtid):
     train_ex = train_ex.drop(axis=['column'], columns=['time_sn'])
     return convert_enum(train_ex)
 
-def estimate_score(top_n, wtid):
+def estimate_score(top_n, wtid_list):
     score_list = []
     for col_name in get_predict_col():
-        para = get_best_para(col_name, wtid, top_n=top_n)
+        para = get_best_para(col_name, wtid_list, top_n=top_n)
         score_list.append(para.score)
     return round(np.array(score_list).mean(), 4)
 
@@ -60,7 +60,7 @@ def estimate_score(top_n, wtid):
 def predict_all(version):
     args = options()
 
-    score_avg = estimate_score(args.top_n, args.wtid)
+    score_avg = estimate_score(args.top_n, args.wtid_list)
     logger.info(f'The validate score is {score_avg} for args:{args}')
 
     # train_list = []
@@ -107,11 +107,10 @@ def options():
     parser.add_argument("-D", '--debug', action='store_true', default=False)
     parser.add_argument("-W", '--warning', action='store_true', default=False)
     parser.add_argument('--version', type=str, default='0129')
-    parser.add_argument('--wtid', type=int, default=-1)
+    parser.add_argument('--wtid_list', nargs='+', default=[ 30, 31, 32, 33])
     parser.add_argument('--top_n', type=int, default=0)
     #parser.add_argument('--window', type=float, default=0.7, help='It control how many sample will be choose: window*len(test)')
     parser.add_argument("-L", '--log', action='store_true', default=False)
-
 
     # parser.add_argument("--version", help="check version", type=str, default='lg')
     args = parser.parse_args()
@@ -124,7 +123,7 @@ def options():
         logging.getLogger().setLevel(logging.INFO)
 
     if args.log:
-        file = f'train_{args.top_n}_{args.wtid}.log'
+        file = f'train_{args.top_n}_{args.wtid_list}.log'
         handler = logging.FileHandler(file, 'a')
         handler.setFormatter(format)
         logger.addHandler(handler)
