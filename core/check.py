@@ -212,7 +212,7 @@ def check_score_column(col_name):
 
     #col_name = f"var{str(col_name_sn).rjust( 3, '0',)}"
     score_file = f'./score/{class_name}/{wtid:02}/{col_name}.h5'
-    if os.path.exists(score_file) and check_exising_his(score_file):
+    if check_exising_his(score_file):
         his_df = pd.read_hdf(score_file,'/his')
         latest = his_df.sort_values('ct', ascending=False).iloc[0]
 
@@ -221,14 +221,17 @@ def check_score_column(col_name):
         if gap <= check_options().check_gap:
             logger.warning(f'For {col_name}, The server:{latest.server} already save in {round(gap)} mins ago, {latest.ct}')
             return None
+        else:
+            logger.info(f'Last time is @{col_name} at {latest.ct}')
 
-
+    try:
         score_df = pd.read_hdf(score_file,'score')
-
-        logger.info(f'Already existing file:{score_df.shape}, {score_file}')
-
-    else:
+    except Exception as e:
         score_df = pd.DataFrame()
+
+    if len(score_df) >= 3456:
+        logger.info(f'The column might be already arrive at the max size')
+        return None
 
     heart_beart(score_file)
 
