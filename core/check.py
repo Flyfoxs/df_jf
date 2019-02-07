@@ -153,7 +153,7 @@ def check_exising_his(score_file):
             return False
 
 
-def heart_beart(score_file):
+def heart_beart(score_file, msg):
     path = os.path.dirname (score_file)
     os.makedirs(path, exist_ok=True)
 
@@ -165,7 +165,7 @@ def heart_beart(score_file):
     else:
         his_df = pd.DataFrame()
 
-    his_df = his_df.append({'ct': pd.to_datetime('now'), 'server': host_name}, ignore_index=True)
+    his_df = his_df.append({'ct': pd.to_datetime('now'), 'server': host_name, 'msg':msg}, ignore_index=True)
     his_df.to_hdf(score_file, 'his')
 
     return his_df
@@ -202,15 +202,7 @@ def check_existing(df, args):
 @timed()
 def check_score_column(col_name):
     wtid = check_options().wtid
-    window = 0.7
-    momenta_col_length = 1
-    momenta_impact_length = 300
-    time_sn = True
-    related_col_count = 0
-    drop_threshold = 1
     class_name = 'lr'
-
-    #col_name = f"var{str(col_name_sn).rjust( 3, '0',)}"
     score_file = f'./score/{class_name}/{wtid:02}/{col_name}.h5'
     if check_exising_his(score_file):
         his_df = pd.read_hdf(score_file,'/his')
@@ -229,18 +221,57 @@ def check_score_column(col_name):
     except Exception as e:
         score_df = pd.DataFrame()
 
-    if len(score_df) >= 3456:
-        logger.info(f'The column might be already arrive at the max size')
-        return None
-
-    heart_beart(score_file)
-
-    from tqdm import tqdm
+    heart_beart(score_file, f'begin with existing:{len(score_df)}, type:{date_type[col_name].__name__}')
     processed_count = 0
-    ignore_count = 0
-    for window in tqdm(get_window(col_name)):
+
+    model = check_options().model
+    if model == 'new':
+        arg_list = get_brand_new_args(col_name)
+    else:
+        arg_list = get_missing_args(col_name, todo_wtid=wtid)
+
+
+    if not arg_list:
+        logger.warning(f'Model:{model}, {col_name}, wtid:{wtid} is ready, current sample is {score_df.shape}')
+    else:
+        logger.info(f'Model:{model}, Current sample:{score_df.shape}, {col_name},wtid:{wtid}' )
+
+
+    for sn, args in arg_list:
+
+        score = check_score(args)
+        logger.debug(f'Current score is{score:.4f} wtih:{args}')
+        args['score'] = score
+        args['ct'] = pd.to_datetime('now')
+
+        score_df = score_df.append(args, ignore_index=True)
+        processed_count += 1
+
+        if processed_count % 100 ==0:
+            score_df.to_hdf(score_file, 'score')
+            his_df = heart_beart(score_file, f'processed:{processed_count}/current:{len(score_df)}, type:{date_type[col_name].__name__}')
+
+    his_df = heart_beart(score_file, f'Done:{processed_count}/current:{len(score_df)}, type:{date_type[col_name].__name__}')
+
+    score_df.to_hdf(score_file, 'score', mode='w')
+    his_df.to_hdf(score_file, 'his')
+
+    logger.info(f'There are {processed_count} process, total:{len(score_df)}')
+
+
+def get_brand_new_args(col_name):
+    arg_list = []
+    wtid = check_options().wtid
+    window = 0.7
+    momenta_col_length = 1
+    momenta_impact_length = 300
+    time_sn = True
+    related_col_count = 0
+    drop_threshold = 1
+    class_name = 'lr'
+    for window in get_window(col_name):
         window = round(window, 1)
-        for momenta_col_length in get_momenta_col_length(col_name) :
+        for momenta_col_length in get_momenta_col_length(col_name):
             for momenta_impact_length in get_momenta_impact_length(col_name):
                 for time_sn in get_time_sn(col_name):
                     for file_num in get_file_num(col_name):
@@ -256,24 +287,34 @@ def check_score_column(col_name):
                                 'class_name': class_name,
                                 }
                         args = DefaultMunch(None, args)
+                        arg_list.append(args)
 
-                        if not check_existing(score_df,args):
-                            score = check_score(args)
-                            logger.debug(f'Current score is{score:.4f} wtih:{args}')
-                            args['score'] = score
-                            args['ct'] = pd.to_datetime('now')
+    return enumerate(arg_list)
 
-                            score_df = score_df.append(args, ignore_index=True)
-                            processed_count += 1
-                        else:
-                            ignore_count += 1
 
-                        heart_beart(score_file)
+def get_missing_args(col_name, todo_wtid, base_wtid=1):
+    base = pd.read_hdf(f'./score/lr/{base_wtid:02}/{col_name}.h5', 'score')
+    try:
+        todo = pd.read_hdf(f'./score/lr/{todo_wtid:02}/{col_name}.h5', 'score')
+    except Exception as e:
+        base.wtid = todo_wtid
+        return base
 
-            #Save middle status
-            score_df.to_hdf(score_file, 'score')
-            logger.info(f'Save {score_df.shape} to file:{score_file}')
-    logger.info(f'There are {processed_count} process, and {ignore_count} are ignore/existing, total:{processed_count + ignore_count}')
+    col_list = list(base.columns.values)
+    col_list.remove('ct')
+    col_list.remove('wtid')
+    col_list.remove('score')
+
+    print(col_list)
+
+    base = base.rename(columns={'ct': 'ct_old', 'wtid': 'wtid_old'})
+
+    base = base.merge(todo, how='left', on=col_list)
+    todo = base.loc[pd.isna(base.ct)][col_list].reset_index(drop=True)
+    todo['wtid'] = todo_wtid
+    logger.info(f'Have {len(todo)} missing rows need todo for {col_name}, {todo_wtid}')
+    return todo.iterrows()
+
 
 @lru_cache()
 def check_options():
@@ -288,6 +329,8 @@ def check_options():
     parser.add_argument("-L", '--log', action='store_true', default=False)
     parser.add_argument("--thread", type=int, default=8)
     parser.add_argument('--mini', type=int, default=3, help='enable the Mini model' )
+
+    parser.add_argument('--model', type=str, default='missing', help='missing, new')
 
 
     # parser.add_argument("--version", help="check version", type=str, default='lg')
