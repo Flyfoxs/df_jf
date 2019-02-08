@@ -267,6 +267,8 @@ def check_score_column(col_name):
 
     his_df = heart_beart(score_file, f'Done:{processed_count}/current:{len(score_df)}, type:{date_type[col_name].__name__}')
 
+    score_df = score_df.sort_values('ct',ascending=False)
+    score_df = score_df.drop_duplicates(model_paras)
     score_df.to_hdf(score_file, 'score', mode='w')
     his_df.to_hdf(score_file, 'his')
 
@@ -335,7 +337,7 @@ def fill_ext_arg(df, col_name):
 
     df = df.drop_duplicates(col_list)
 
-    logger.info(f'There are {len(df)-old_len} args add to list({old_len}) for col_name:{col_name}')
+    logger.info(f'There are {len(df)-old_len} args add to list({old_len}) for col_name:{col_name}, original_df:{col_list}')
     return df[col_list]
 
 
@@ -429,6 +431,7 @@ def merge_score_col(col_name, wtid_list):
         #         tmp_df = pd.read_hdf(file_name)
         #         df_list.append(tmp_df)
     all = pd.concat(df_list)
+    all = all.drop_duplicates(model_paras)
     logger.debug(f'There are {len(df_list)} score files for {col_name}, wtid:{wtid_list}')
     return all
 

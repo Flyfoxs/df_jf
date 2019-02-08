@@ -8,6 +8,11 @@ import numpy as np
 
 cache_size = 64
 
+model_paras = ['class_name', 'col_name',
+               'drop_threshold', 'file_num',
+               'momenta_col_length', 'momenta_impact_length',
+               'related_col_count',  'time_sn', 'window',]
+
 date_type={
 'wtid'	    :np.int16,
 'var053'	:np.int16,
