@@ -88,25 +88,43 @@ def check_score_all():
 
     logger.debug(f'It is done for {check_options().wtid}')
 
-
-def get_mini_args(col_name, para_name, top_n=3):
+def get_args_mini(col_name, para_name, top_n=3):
     tmp = merge_score_col(col_name, [1,2,3]) #get_mini_args
 
     tmp = tmp.groupby(para_name).agg({'score':['max', 'mean']})
     tmp.columns = ['_'.join(items) for items in tmp.columns]
     tmp = tmp.sort_values('score_mean', ascending=False)
-    return tmp.index.values[:top_n]
+
+    # wtid_list = [
+    #     '1,2,3',
+    #     '1',
+    #     '2',
+    #     '3',
+    #     '4',
+    #     '1,2,3,4',
+    #     '30',
+    #     '31',
+    #     '32',
+    #     '33'
+    # ]
+    args = set(tmp.index.values[:top_n])
+    # for wtid_tmp in wtid_list:
+    #     best = get_best_para(col_name, wtid_tmp, 0)[para_name]
+    #     if best not in args:
+    #         logger.warning(f'The best arg:{best} is not found from {args}, which base on {col_name}, {para_name}, {top_n}')
+    #         args.add(best)
+    return args
 
 @lru_cache()
 def get_window(col_name):
     if check_options().mini > 0:
-        return get_mini_args(col_name, 'window',check_options().mini)
+        return get_args_mini(col_name, 'window', check_options().mini)
     return np.arange(0.1, 3, 0.4)
 
 @lru_cache()
 def get_momenta_col_length(col_name):
     if check_options().mini > 0:
-        return get_mini_args(col_name, 'momenta_col_length',2)
+        return get_args_mini(col_name, 'momenta_col_length', 2)
 
     is_enum = True if 'int' in date_type[col_name].__name__ else False
     if is_enum:
@@ -117,7 +135,7 @@ def get_momenta_col_length(col_name):
 @lru_cache()
 def get_momenta_impact_length(col_name):
     if check_options().mini > 0:
-        return get_mini_args(col_name, 'momenta_impact_length',check_options().mini)
+        return get_args_mini(col_name, 'momenta_impact_length', check_options().mini)
 
     is_enum = True if 'int' in date_type[col_name].__name__ else False
     if is_enum:
@@ -135,7 +153,7 @@ def get_time_sn(col_name):
 @lru_cache()
 def get_file_num(col_name):
     if check_options().mini > 0:
-        return get_mini_args(col_name, 'file_num', check_options().mini)
+        return get_args_mini(col_name, 'file_num', check_options().mini)
     is_enum = True if 'int' in date_type[col_name].__name__ else False
     if is_enum:
         return [1]
@@ -219,24 +237,21 @@ def check_score_column(col_name):
         else:
             logger.info(f'Last time is @{col_name} at {latest.ct}')
 
+    model = check_options().model
     try:
         score_df = pd.read_hdf(score_file,'score')
     except Exception as e:
         score_df = pd.DataFrame()
 
-    heart_beart(score_file, f'begin with existing:{len(score_df)}, type:{date_type[col_name].__name__}')
     processed_count = 0
 
-    model = check_options().model
-    if model == 'new':
-        arg_list = get_brand_new_args(col_name)
-    else:
-        arg_list = get_missing_args(col_name, todo_wtid=wtid)
+    arg_list = get_args_missing(col_name, todo_wtid=wtid)
 
-    logger.info(f'Model:{model}, Current sample:{score_df.shape}, {col_name},wtid:{wtid}' )
+    logger.info(f'Model:{model}, mini:{check_options().mini}, Current sample:{score_df.shape}, {col_name},wtid:{wtid}' )
 
+    heart_beart(score_file, f'begin with model:{model}, existing:{len(score_df)}, todo:{len(arg_list)}, type:{date_type[col_name].__name__}')
 
-    for sn, args in arg_list:
+    for sn, args in arg_list.iterrows():
 
         score = check_score(args, reverse = -1)
         logger.debug(f'Current score is{score:.4f} wtih:{args}')
@@ -255,10 +270,11 @@ def check_score_column(col_name):
     score_df.to_hdf(score_file, 'score', mode='w')
     his_df.to_hdf(score_file, 'his')
 
-    logger.info(f'There are {processed_count} process, total:{len(score_df)}')
+    logger.info(f'There are {processed_count} process for {col_name}, total:{len(score_df)}')
 
 
-def get_brand_new_args(col_name):
+def get_args_all(col_name):
+    df = pd.DataFrame()
     arg_list = []
     wtid = check_options().wtid
     window = 0.7
@@ -274,7 +290,7 @@ def get_brand_new_args(col_name):
             for momenta_impact_length in get_momenta_impact_length(col_name):
                 for time_sn in get_time_sn(col_name):
                     for file_num in get_file_num(col_name):
-                        args = {'wtid': wtid,
+                        args = {#'wtid': wtid,
                                 'col_name': col_name,
                                 'file_num': file_num,
                                 'window': window,
@@ -285,34 +301,68 @@ def get_brand_new_args(col_name):
                                 'time_sn': time_sn,
                                 'class_name': class_name,
                                 }
-                        args = DefaultMunch(None, args)
-                        arg_list.append(args)
+                        # args = DefaultMunch(None, args)
+                        # arg_list.append(args)
+                        df = df.append(args,ignore_index=True)
 
-    return enumerate(arg_list)
+    return fill_ext_arg(df, col_name)
+
+def fill_ext_arg(df, col_name):
+    if check_options().mini < 1:
+        return df
+    col_list = df.columns
+    old_len = len(df)
+
+    wtid_list = [
+        '1,2,3',
+        '1,2,3,4',
+        '1,2,3,4,5',
+        '30,31, 32, 33',
+        '1,2,3,4,  30,31, 32, 33',
+        '1,2,3,4,5,30,31, 32, 33',
+        '1',
+        '2',
+        '3',
+        '4',
+        '30',
+        '31',
+        '32',
+        '33'
+    ]
+    for wtid_tmp in wtid_list:
+        best = get_best_para(col_name, wtid_tmp, 0)
+        df = df.append(best)
+
+    df = df.drop_duplicates(col_list)
+
+    logger.info(f'There are {len(df)-old_len} args add to list({old_len}) for col_name:{col_name}')
+    return df[col_list]
 
 
-def get_missing_args(col_name, todo_wtid, base_wtid=1):
-    base = pd.read_hdf(f'./score/lr/{base_wtid:02}/{col_name}.h5', 'score')
+def get_args_missing(col_name, todo_wtid):
+    base = get_args_all(col_name)
+
+    original_len = len(base)
+
+    #base = pd.read_hdf(f'./score/lr/{base_wtid:02}/{col_name}.h5', 'score')
     try:
         todo = pd.read_hdf(f'./score/lr/{todo_wtid:02}/{col_name}.h5', 'score')
     except Exception as e:
-        base.wtid = todo_wtid
-        return base.iterrows()
+        logger.debug(f'It is a new task for {col_name}, wtid:{todo_wtid}')
+        base['wtid'] = todo_wtid
+        return base
 
     col_list = list(base.columns.values)
-    col_list.remove('ct')
-    col_list.remove('wtid')
-    col_list.remove('score')
 
-    print(col_list)
+    # print(col_list)
 
-    base = base.rename(columns={'ct': 'ct_old', 'wtid': 'wtid_old'})
+    #base = base.rename(columns={'ct': 'ct_old', 'wtid': 'wtid_old'})
 
     base = base.merge(todo, how='left', on=col_list)
     todo = base.loc[pd.isna(base.ct)][col_list].reset_index(drop=True)
-    todo['wtid'] = todo_wtid
-    logger.info(f'Have {len(todo)} missing rows need todo for {col_name}, {todo_wtid}')
-    return todo.iterrows()
+    todo['wtid'] = int(todo_wtid)
+    logger.info(f'Have {len(todo)} missing rows need todo, total:{original_len} for {col_name}, wtid:{todo_wtid}')
+    return todo
 
 
 @lru_cache()
@@ -366,11 +416,11 @@ def merge_score_col(col_name, wtid_list):
     for wtid in wtid_list:
         wtid = f'{wtid:02}' if wtid is not None and wtid > 0 else '*'
         match = f"./score/*/{wtid}/*.h5"
-        logger.debug(f'Match:{match}')
+        #logger.debug(f'Match:{match}')
         for file_name in sorted(glob(match)):
-            logger.debug(f'get file_name:{file_name} with {match}')
+            #logger.debug(f'get file_name:{file_name} with {match}')
             if col_name in file_name:
-                tmp_df = pd.read_hdf(file_name)
+                tmp_df = pd.read_hdf(file_name , 'score')
                 #TODO
                 #tmp_df = tmp_df.loc[tmp_df.file_num % 2 == 1]
                 df_list.append(tmp_df)

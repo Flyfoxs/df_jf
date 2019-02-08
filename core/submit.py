@@ -17,7 +17,9 @@ def predict_wtid(wtid):
                     ].iterrows():
         col_name = missing_block.col
 
-        para = get_best_para(col_name, app_args.wtid_list, top_n=app_args.top_n) #predict_wtid
+        base_wtid_list = app_args.wtid_list
+        base_wtid_list = [str(item) for item in base_wtid_list]
+        para = get_best_para(col_name, ','.join(base_wtid_list), top_n=app_args.top_n) #predict_wtid
 
         logger.debug(f'===Predict wtid:{wtid:2},{col_name},blockid:{blockid:6}, best_file_num:{para.file_num}, type:{missing_block.data_type}')
         train, sub = get_submit_feature_by_block_id(blockid, para)
@@ -51,7 +53,11 @@ def predict_wtid(wtid):
 def estimate_score(top_n, wtid_list):
     score_list = []
     for col_name in get_predict_col():
-        para = get_best_para(col_name, wtid_list, top_n=top_n) #estimate_score
+
+        base_wtid_list = wtid_list
+        base_wtid_list = [str(item) for item in base_wtid_list]
+
+        para = get_best_para(col_name, ','.join(base_wtid_list), top_n=top_n) #estimate_score
         score_list.append(para.score)
     return round(np.array(score_list).mean(), 4)
 
@@ -107,7 +113,7 @@ def options():
     parser.add_argument("-D", '--debug', action='store_true', default=False)
     parser.add_argument("-W", '--warning', action='store_true', default=False)
     parser.add_argument('--version', type=str, default='0129')
-    parser.add_argument('--wtid_list', nargs='+', default=[ 30, 31, 32, 33])
+    parser.add_argument('--wtid_list', nargs='+', default=[1,2,3,4,30,31, 32, 33])
     parser.add_argument('--top_n', type=int, default=0)
     #parser.add_argument('--window', type=float, default=0.7, help='It control how many sample will be choose: window*len(test)')
     parser.add_argument("-L", '--log', action='store_true', default=False)
