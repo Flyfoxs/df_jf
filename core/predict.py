@@ -1,10 +1,9 @@
 from core.feature import *
 import fire
 
-def get_predict_fun(blockid, train, args):
-    block = get_blocks().iloc[blockid]
+def get_predict_fun(train, args):
 
-    col_name = block['col']
+    col_name = args['col_name']
 
     is_enum = True if 'int' in date_type[col_name].__name__ else False
 

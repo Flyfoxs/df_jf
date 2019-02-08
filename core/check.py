@@ -10,7 +10,7 @@ import fire
 from core.predict import *
 
 @timed()
-def check_score(args, pic_num=0):
+def check_score(args, reverse):
     """
 
     :param wtid:
@@ -31,17 +31,15 @@ def check_score(args, pic_num=0):
     wtid = args['wtid']
     col = args['col_name']
 
-    train_list = get_train_sample_list(wtid, col, args.file_num, args.window)
+    train_list = get_train_sample_list(wtid, col, args.file_num, args.window, reverse)
 
     count, loss = 0, 0
 
-    if pic_num ==True:
-        train_list = train_list[:pic_num]
     for train, val, blockid in train_list :
 
         is_enum = True if 'int' in date_type[col].__name__ else False
         logger.debug(f'Blockid#{blockid}, train:{train.shape}, val:{val.shape}, file_num:{args.file_num}')
-        check_fn = get_predict_fun(blockid, train, args)
+        check_fn = get_predict_fun(train, args)
 
         # if pic_num:
         #     plt.figure(figsize=(20, 5))
@@ -145,12 +143,17 @@ def get_file_num(col_name):
         return range(1,10)
 
 def check_exising_his(score_file):
-    with pd.HDFStore(score_file) as store:
-        key_list = store.keys()
-        if '/his' in key_list and  len(store['his']) > 0:
-            return True
-        else:
-            return False
+    try:
+        with pd.HDFStore(score_file) as store:
+            key_list = store.keys()
+            if '/his' in key_list and  len(store['his']) > 0:
+                return True
+            else:
+                return False
+    except Exception as e:
+        path = os.path.dirname(score_file)
+        os.makedirs(path, exist_ok=True)
+        return False
 
 
 def heart_beart(score_file, msg):
@@ -230,16 +233,12 @@ def check_score_column(col_name):
     else:
         arg_list = get_missing_args(col_name, todo_wtid=wtid)
 
-
-    if not arg_list:
-        logger.warning(f'Model:{model}, {col_name}, wtid:{wtid} is ready, current sample is {score_df.shape}')
-    else:
-        logger.info(f'Model:{model}, Current sample:{score_df.shape}, {col_name},wtid:{wtid}' )
+    logger.info(f'Model:{model}, Current sample:{score_df.shape}, {col_name},wtid:{wtid}' )
 
 
     for sn, args in arg_list:
 
-        score = check_score(args)
+        score = check_score(args, reverse = -1)
         logger.debug(f'Current score is{score:.4f} wtih:{args}')
         args['score'] = score
         args['ct'] = pd.to_datetime('now')
@@ -298,7 +297,7 @@ def get_missing_args(col_name, todo_wtid, base_wtid=1):
         todo = pd.read_hdf(f'./score/lr/{todo_wtid:02}/{col_name}.h5', 'score')
     except Exception as e:
         base.wtid = todo_wtid
-        return base
+        return base.iterrows()
 
     col_list = list(base.columns.values)
     col_list.remove('ct')
@@ -384,9 +383,14 @@ def merge_score_col(col_name, wtid_list):
     return all
 
 
-#@lru_cache()
+@timed()
+@lru_cache()
 def get_best_para(col_name, wtid_list=[-1], top_n=0, **kwargs):
-
+    if isinstance(wtid_list, str):
+        logger.info(f'wtid_list:{wtid_list}')
+        wtid_list = wtid_list.split(',')
+        logger.info(f'wtid_list:{wtid_list}')
+        wtid_list = [int(item) for item in wtid_list if item ]
 
     tmp = merge_score_col(col_name, wtid_list) # get_best_score
     for k, v in kwargs.items():

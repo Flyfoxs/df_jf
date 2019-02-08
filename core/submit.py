@@ -22,7 +22,7 @@ def predict_wtid(wtid):
         logger.debug(f'===Predict wtid:{wtid:2},{col_name},blockid:{blockid:6}, best_file_num:{para.file_num}, type:{missing_block.data_type}')
         train, sub = get_submit_feature_by_block_id(blockid, para)
 
-        predict_fn = get_predict_fun(blockid, train, para)
+        predict_fn = get_predict_fun(train, para)
         predict_res = predict_fn(sub.iloc[:, 1:])
         logger.debug(f'sub={sub.shape}, predict_res={predict_res.shape}, type={type(predict_res)}')
         sub[col_name] = predict_res

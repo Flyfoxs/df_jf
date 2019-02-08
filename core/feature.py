@@ -233,7 +233,7 @@ def get_missing_block_single(wtid, col, cur_missing):
 #TODO
 #@timed()
 @lru_cache(maxsize=32)
-def get_train_sample_list(wtid, col, file_num, window):
+def get_train_sample_list(wtid, col, file_num, window, reverse=-1):
 
     # args = DefaultMunch(None, json.loads(args_json))
     feature_list = []
@@ -259,14 +259,27 @@ def get_train_sample_list(wtid, col, file_num, window):
         at_least_len_for_block = int(10 * missing_length)
         logger.debug(
             f'get_train_feature:file_num={file_num}, at_least_len_for_block={at_least_len_for_block},  '
-            f'missing_len={missing_length}')
+            f'missing_len/Need_Validate={missing_length}')
 
         for index, cur_block in (train_block[train_block['length'] >= at_least_len_for_block]).iterrows():
             begin, end = cur_block.begin, cur_block.end
             # Get the data without missing
             block = train.loc[begin:end]
 
-            val_feature = block.iloc[-missing_length*4: -missing_length*3]
+            #missing_length = max(missing_length,2)
+
+            #logger.info(f'missing_length:{missing_length}')
+            if reverse < 0:
+                val_feature = block.iloc[missing_length * -4 : missing_length * -3]
+            else:
+                val_feature = block.iloc[missing_length * 3: missing_length * 4]
+
+            #logger.debug(block.head(10))
+
+            #logger.debug(val_feature)
+
+
+            logger.debug(f'Begin:{begin}, end:{end},{missing_length * 3}/{missing_length * 4}({len(block)})/ block len:{len(block)}, reverse:{reverse}:missing_length/val:{missing_length}')
 
             train_feature = get_train_df_by_val(train, val_feature, window) #Train
 
@@ -315,8 +328,10 @@ def get_train_df_by_val(train,val_feature, window):
                      f'[{part2.index.min()}, {part2.index.max()} ]({len(part2)}), cur_windows:{cur_windows}' )
 
     except Exception  as e:
-        logger.exception(f'Can not get train for val block:{val_begin}:{val_end}, {args}')
+        logger.error(val_feature)
         logger.exception(e)
+        logger.exception(f'Can not get train for val block:{val_begin}:{val_end}, {args}')
+
         raise e
     if len(train_feature) == 0:
         logger.exception(f'Train feature length is none, for val block:{val_begin}:{val_end}')
