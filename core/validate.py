@@ -3,30 +3,44 @@ from core.check import *
 
 @timed()
 def validate():
-    wtid_list = [1,2,3]
 
-    score_file = f'./score/val/validate.h5'
+    from multiprocessing import Pool as ThreadPool  # 进程
+
+    pool = ThreadPool(8)
+    score_list = pool.map(validate_wtid, range(1, 34))
+
+    score_df = pd.concat(score_list)
+
+    avg = round(score_df.score_total.sum()/score_df.score_count.sum())
+    score_file = f'./score/val/validate_{avg :.6f}.h5'
+    path = os.path.dirname(score_file)
+    os.makedirs(path, exist_ok=True)
+
+    score_df.to_hdf(score_file, 'score')
+
+
+def validate_wtid(wtid):
+
     score_df = pd.DataFrame()
     for wtid in range(1, 34):
         for col_name in get_predict_col():
 
-            #score_file = f'./score/val/{col_name}.h5'
-
-            args = get_best_para(col_name, ','.join([str(wtid) for wtid in wtid_list]), top_n=0) #validate
+            args = get_best_para(col_name, str(wtid), top_n=0) #validate
             args['wtid'] = wtid
             logger.debug(args)
-            score = check_score(args, reverse = 1)
+            score, count = check_score(args, reverse = 1)
 
             logger.info(f'wtid:{wtid:02},{col_name},Current score is{score:.4f} wtih:{args}')
-            args['score'] = score
+            #args['score'] = score
+            args['score'] = round(score / count, 4)
+            args['score_total'] = score
+            args['score_count'] = count
             args['ct'] = pd.to_datetime('now')
-
             score_df = score_df.append(args, ignore_index=True)
 
-        score_df.to_hdf(score_file, 'val', mode='w')
+    logger.debug(f'Validate score {len(score_df)},{col_name},wtid:{wtid} is :{score_df.score.mean()}')
 
-
-    logger.debug(f'Validate score {len(score_df)} is :{score_df.score.mean()}')
+    return score_df
 
 
 if __name__ == '__main__':

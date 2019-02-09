@@ -57,9 +57,9 @@ def check_score(args, reverse):
         loss += cur_loss
         count += cur_count
         logger.debug(f'blockid:{blockid}, {train.shape}, {val.shape}, score={round(cur_loss/cur_count,3)}')
-    avg_loss = round(loss/count, 4)
+    # avg_loss = round(loss/count, 4)
 
-    return avg_loss
+    return loss, count
 
 @lru_cache()
 def get_closed_wtid_list(wtid):
@@ -277,8 +277,10 @@ def check_score_column(col_name):
 
     for sn, args in arg_list.iterrows():
 
-        score = check_score(args, reverse = -1)
-        args['score'] = score
+        score, count = check_score(args, reverse = -1)
+        args['score'] = round(score/count, 4)
+        args['score_total'] = score
+        args['score_count'] = count
         args['ct'] = pd.to_datetime('now')
 
         score_df = score_df.append(args, ignore_index=True)
