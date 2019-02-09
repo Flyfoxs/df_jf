@@ -83,8 +83,11 @@ def check_score_all():
 
     #summary = summary_all_best_score()
     col_list = get_predict_col()
-
-    pool.map(check_score_column, col_list)
+    try:
+        pool.map(check_score_column, col_list, chunksize=1)
+    except Exception as e:
+        logger.exception(e)
+        return
 
     logger.debug(f'It is done for {check_options().wtid}')
 
@@ -232,47 +235,55 @@ def check_score_column(col_name):
         from datetime import timedelta
         gap = (pd.to_datetime('now') - latest.ct) / timedelta(minutes=1)
         if gap <= check_options().check_gap:
-            logger.warning(f'For {col_name}, The server:{latest.server} already save in {round(gap)} mins ago, {latest.ct}')
+            logger.warning(f'Ignore this time for {col_name}, since the server:{latest.server} already save in {round(gap)} mins ago, {latest.ct}')
             return None
         else:
             logger.info(f'Last time is @{col_name} at {latest.ct}')
+    heart_beart(score_file, 'dummpy')
 
-    model = check_options().model
+    # model = check_options().model
     try:
         score_df = pd.read_hdf(score_file,'score')
     except Exception as e:
+        logger.info(f'No score is found for :{col_name} wtid:{wtid}')
         score_df = pd.DataFrame()
 
     processed_count = 0
 
     arg_list = get_args_missing(col_name, todo_wtid=wtid)
 
-    logger.info(f'Model:{model}, mini:{check_options().mini}, Current sample:{score_df.shape}, {col_name},wtid:{wtid}' )
+    logger.info(f'Mini:{check_options().mini}, Current sample:{score_df.shape}, {col_name},wtid:{wtid}' )
 
-    heart_beart(score_file, f'begin with model:{model}, existing:{len(score_df)}, todo:{len(arg_list)}, type:{date_type[col_name].__name__}')
+    heart_beart(score_file, f'Existing:{len(score_df)}, todo:{len(arg_list)}, type:{date_type[col_name].__name__}')
 
     for sn, args in arg_list.iterrows():
 
         score = check_score(args, reverse = -1)
-        logger.debug(f'Current score is{score:.4f} wtih:{args}')
         args['score'] = score
         args['ct'] = pd.to_datetime('now')
 
         score_df = score_df.append(args, ignore_index=True)
+        logger.info(f'Current df:{score_df.shape}, last score is {score:.4f} wtih:\n{args}')
+
         processed_count += 1
 
         if processed_count % 100 ==0:
             score_df.to_hdf(score_file, 'score')
-            his_df = heart_beart(score_file, f'processed:{processed_count}/current:{len(score_df)}, type:{date_type[col_name].__name__}')
+            heart_beart(score_file, f'processed:{processed_count}/current:{len(score_df)}, type:{date_type[col_name].__name__}')
 
     his_df = heart_beart(score_file, f'Done:{processed_count}/current:{len(score_df)}, type:{date_type[col_name].__name__}')
 
+    score_df.ct = score_df.ct.astype('str')
     score_df = score_df.sort_values('ct',ascending=False)
+    len_with_dup = len(score_df)
     score_df = score_df.drop_duplicates(model_paras)
+    remove_len = len_with_dup - len(score_df)
+    if remove_len > 0:
+        logger.warning(f'There are {remove_len} records are removed, current len is:{len(score_df)}, old:{len_with_dup}')
     score_df.to_hdf(score_file, 'score', mode='w')
     his_df.to_hdf(score_file, 'his')
 
-    logger.info(f'There are {processed_count} process for {col_name}, total:{len(score_df)}')
+    logger.info(f'There are {processed_count} process for {col_name}, Current total:{len(score_df)}')
 
 
 def get_args_all(col_name):
@@ -341,29 +352,27 @@ def fill_ext_arg(df, col_name):
     return df[col_list]
 
 
+@timed()
 def get_args_missing(col_name, todo_wtid):
-    base = get_args_all(col_name)
-
-    original_len = len(base)
+    todo = get_args_all(col_name)
 
     #base = pd.read_hdf(f'./score/lr/{base_wtid:02}/{col_name}.h5', 'score')
     try:
-        todo = pd.read_hdf(f'./score/lr/{todo_wtid:02}/{col_name}.h5', 'score')
+        base = pd.read_hdf(f'./score/lr/{todo_wtid:02}/{col_name}.h5', 'score')
+        original_len = len(base)
     except Exception as e:
         logger.debug(f'It is a new task for {col_name}, wtid:{todo_wtid}')
-        base['wtid'] = todo_wtid
-        return base
-
-    col_list = list(base.columns.values)
+        todo['wtid'] = todo_wtid
+        return todo
 
     # print(col_list)
 
     #base = base.rename(columns={'ct': 'ct_old', 'wtid': 'wtid_old'})
 
-    base = base.merge(todo, how='left', on=col_list)
-    todo = base.loc[pd.isna(base.ct)][col_list].reset_index(drop=True)
+    todo = todo.merge(base, how='left', on=model_paras)
+    todo = todo.loc[pd.isna(todo.ct) & pd.isna(todo.wtid)][model_paras].reset_index(drop=True)
     todo['wtid'] = int(todo_wtid)
-    logger.info(f'Have {len(todo)} missing rows need todo, total:{original_len} for {col_name}, wtid:{todo_wtid}')
+    logger.info(f'Have {len(todo)} todo, original:{original_len}, {col_name}, wtid:{todo_wtid}')
     return todo
 
 
@@ -381,7 +390,7 @@ def check_options():
     parser.add_argument("--thread", type=int, default=8)
     parser.add_argument('--mini', type=int, default=3, help='enable the Mini model' )
 
-    parser.add_argument('--model', type=str, default='missing', help='missing, new')
+    # parser.add_argument('--model', type=str, default='missing', help='missing, new')
 
 
     # parser.add_argument("--version", help="check version", type=str, default='lg')

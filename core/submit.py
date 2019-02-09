@@ -66,7 +66,7 @@ def estimate_score(top_n, wtid_list):
 def predict_all(version):
     args = options()
 
-    score_avg = estimate_score(args.top_n, args.wtid_list)
+    score_avg = estimate_score(args.top_n, list(range(1,34)))
     logger.info(f'The validate score is {score_avg} for args:{args}')
 
     # train_list = []
@@ -113,7 +113,7 @@ def options():
     parser.add_argument("-D", '--debug', action='store_true', default=False)
     parser.add_argument("-W", '--warning', action='store_true', default=False)
     parser.add_argument('--version', type=str, default='0129')
-    parser.add_argument('--wtid_list', nargs='+', default=list(range(1,34)))
+    #parser.add_argument('--wtid_list', nargs='+', default=list(range(1,34)))
     #parser.add_argument('--wtid_list', nargs='+', default=[1, 2, 3, 4, 30, 31, 32, 33])
     parser.add_argument('--top_n', type=int, default=0)
     #parser.add_argument('--window', type=float, default=0.7, help='It control how many sample will be choose: window*len(test)')
@@ -130,7 +130,7 @@ def options():
         logging.getLogger().setLevel(logging.INFO)
 
     if args.log:
-        file = f'train_{args.top_n}_{args.wtid_list}.log'
+        file = f'train_{args.top_n}.log'
         handler = logging.FileHandler(file, 'a')
         handler.setFormatter(format)
         logger.addHandler(handler)
