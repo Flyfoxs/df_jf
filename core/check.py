@@ -61,11 +61,30 @@ def check_score(args, reverse):
 
     return avg_loss
 
+@lru_cache()
+def get_closed_wtid_list(wtid):
+
+    wtid_count =2
+    col_num = 4
+    s = pd.Series()
+
+    std = get_std_all()
+    col_list = std.loc[std.wtid == wtid].sort_values('mean', ascending=False).col.head(col_num).values
+    for col_name in col_list:
+        cor = get_corr_wtid(col_name)
+        #print(cor.columns)
+        related_wtid_list = cor[f'{col_name}_{wtid}'].sort_values(ascending=False)[:wtid_count]
+        related_wtid_list = [ int(item.split('_')[1]) for item in related_wtid_list.index.values]
+        #print('===', sorted(related_wtid_list))
+        s = s.append(pd.Series(related_wtid_list), ignore_index=True)
+    s = s.value_counts()
+    closed_list = list(s[s>=col_num].index)
+    return sorted(closed_list)
 
 def summary_all_best_score(wtid_list=[-1], top_n=0, **kwargs):
     df = pd.DataFrame()
     for col in get_predict_col():
-        df = df.append(get_best_para(col, wtid_list, top_n, **kwargs), ignore_index=True)
+        df = df.append(get_best_para(col, wtid_list, top_n, **kwargs), ignore_index=True) # summary_all_best_score
 
     df['data_type'] = df.col_name.apply(lambda val: date_type[val].__name__)
 
@@ -418,6 +437,13 @@ def check_options():
 
 #@lru_cache()
 def merge_score_col(col_name, wtid_list):
+    """
+    Merge the score together for one col_name, and multiply wtid
+
+    :param col_name:
+    :param wtid_list:
+    :return:
+    """
     import os
     df_list = []
     from glob import glob
@@ -445,8 +471,9 @@ def merge_score_col(col_name, wtid_list):
     return all
 
 
-@timed()
+
 @lru_cache()
+@timed()
 def get_best_para(col_name, wtid_list=[-1], top_n=0, **kwargs):
     if isinstance(wtid_list, str):
         logger.info(f'wtid_list:{wtid_list}')
@@ -462,13 +489,8 @@ def get_best_para(col_name, wtid_list=[-1], top_n=0, **kwargs):
         else:
             tmp = tmp_check
 
-    col_list = tmp.columns
-    col_list = col_list.drop('score')
-    col_list = col_list.drop('wtid')
-    col_list = col_list.drop('ct')
-    #col_list = col_list.drop('col_name')
-    #print(col_list)
-    tmp = tmp.groupby(list(col_list)).agg({'score':['mean', 'count','min', 'max'], 'wtid':'nunique'}).reset_index()
+
+    tmp = tmp.groupby(model_paras).agg({'score':['mean', 'count','min', 'max'], 'wtid':'nunique'}).reset_index()
     tmp.columns = ['_'.join(item) if item[1] else item[0] for item in tmp.columns]
     tmp = tmp.sort_values(['score_mean', 'score_count'], ascending=False)
     tmp = tmp.rename(columns={'score_mean':'score'})

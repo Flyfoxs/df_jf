@@ -1,6 +1,4 @@
-train_file = './input/data_train.csv'
-test_file = './input/data_test.csv'
-jieba_dict = './input/jieba.txt'
+
 local = False
 vector_size=200
 from file_cache.utils.util_log import *
@@ -9,9 +7,13 @@ import numpy as np
 cache_size = 64
 
 model_paras = ['class_name', 'col_name',
-               'drop_threshold', 'file_num',
+               'drop_threshold',
+               #'add_features',
+               'file_num',
                'momenta_col_length', 'momenta_impact_length',
-               'related_col_count',  'time_sn', 'window',]
+               'related_col_count',
+               'time_sn',
+               'window',]
 
 date_type={
 'wtid'	    :np.int16,

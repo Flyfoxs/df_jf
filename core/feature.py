@@ -379,6 +379,7 @@ def get_submit_feature_by_block_id(blockid, para ):
     return train_feature, val_feature
 
 
+@lru_cache()
 @file_cache()
 def get_std_all():
     df = pd.DataFrame(columns=['wtid', 'col', 'mean', 'min', 'max', 'std'])
@@ -582,10 +583,14 @@ def get_train_feature_multi_file(wtid, col, file_num):
                 f'{dict(zip(related_wtid_list.index,np.round(related_wtid_list.values,3)))}')
     related_wtid_list = [int(col.split('_')[1]) for col in related_wtid_list.index]
 
+    #Find data for original Wtid
     train = rename_col_for_merge_across_wtid(wtid, col)
+
     input_len = len(train)
     train = train.rename(columns={f'{col}_{wtid}':col})
     train['id']=train.index
+
+    #Join the feature from other wtid
     for related_wtid in related_wtid_list:
         train_tmp = rename_col_for_merge_across_wtid(related_wtid, col)
         train_tmp = train_tmp.drop(axis='column', columns=['time_sn'])

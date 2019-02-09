@@ -17,11 +17,12 @@ def predict_wtid(wtid):
                     ].iterrows():
         col_name = missing_block.col
 
-        base_wtid_list = app_args.wtid_list
+        base_wtid_list = [wtid]
+        #base_wtid_list = get_closed_wtid_list(wtid)
         base_wtid_list = [str(item) for item in base_wtid_list]
-        para = get_best_para(col_name, str(wtid), top_n=app_args.top_n) #predict_wtid
+        para = get_best_para(col_name, ','.join(base_wtid_list), top_n=app_args.top_n) #predict_wtid
 
-        logger.debug(f'===Predict wtid:{wtid:2},{col_name},blockid:{blockid:6}, best_file_num:{para.file_num}, type:{missing_block.data_type}')
+        logger.debug(f'===Predict wtid:{wtid:2}, closed_wtid:{base_wtid_list} ,{col_name},blockid:{blockid:6}, best_file_num:{para.file_num}, type:{missing_block.data_type}')
         train, sub = get_submit_feature_by_block_id(blockid, para)
 
         predict_fn = get_predict_fun(train, para)
