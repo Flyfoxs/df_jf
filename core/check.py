@@ -9,6 +9,117 @@ import fire
 
 from core.predict import *
 
+@lru_cache()
+def get_miss_blocks_ex(bin_num=5, kind='cut' ):
+    blk_list = []
+    blk = get_blocks()
+    blk = blk.loc[blk.kind=='missing']
+    gp = blk.groupby('col')
+    for col_name in gp.groups:
+        gp_tmp = gp.get_group(col_name)
+
+        if kind == 'qcut':
+            gp_tmp.loc[:,'bin_des'] = pd.qcut(gp_tmp.length, bin_num)
+        else:
+            gp_tmp.loc[:,'bin_des'] = pd.cut(gp_tmp.length, bin_num)
+        gp_tmp.loc[:,'bin_id']  = gp_tmp.bin_des.cat.codes
+        blk_list.append(gp_tmp)
+    res = pd.concat(blk_list)
+    #res.loc[:,'bin_id'] = res.apply(lambda row: f'{row.wtid:02}_{row.bin_id}', axis=1)
+    return res
+
+def get_wtid_list_by_bin_id(bin_id, bin_count):
+    df = get_miss_blocks_ex(bin_count) #get_wtid_list_by_bin_id
+    return df.loc[df.bin_id==bin_id].wtid.drop_duplicates().values
+
+#TODO
+@lru_cache(maxsize=32)
+@timed()
+def get_train_sample_list(bin_id, col, file_num, window, reverse=-1):
+    arg_loc = locals()
+
+    # args = DefaultMunch(None, json.loads(args_json))
+    feature_list = []
+
+    block_all = get_blocks()
+
+    bin_num = check_options().bin_count
+    block_missing = get_miss_blocks_ex(bin_num) #get_train_sample_list
+
+
+    for wtid in get_wtid_list_by_bin_id(bin_id,bin_num):
+        train_block = block_all.loc[(block_all.wtid == wtid) & (block_all.col == col) & (block_all.kind == 'train')]
+
+        missing_block = block_missing.loc[(block_missing.wtid == wtid) & (block_missing.bin_id == bin_id)
+                                          & (block_missing.col == col) & (block_missing.kind == 'missing')]
+
+        train = get_train_feature_multi_file(wtid, col, file_num)
+
+        for missing_length in missing_block['length'].sort_values().values:
+
+            # if args.file_num==1:
+            #     cur_windows = round(missing_length * 0.7)
+            # else:
+            #     cur_windows = missing_length * 2
+            at_least_len_for_block = int(10 * missing_length)
+            logger.debug(
+                f'get_train_feature:file_num={file_num}, at_least_len_for_block={at_least_len_for_block},  '
+                f'missing_len/Need_Validate={missing_length}')
+
+            qualified_block = train_block[train_block['length'] >= at_least_len_for_block]
+
+            qualified_block = qualified_block[:1] #Max is 4
+
+
+            if len(qualified_block) <=0 :
+                logger.exception(f'There is no qualified block was found for missing_length:{missing_length},bin_id:{bin_id}, {col} ')
+
+            if reverse == 1: #Validate model
+                sample_count = min(check_options().check_cnt, len(qualified_block))
+                logger.info(f'It is in validate model, only pick {sample_count:02} from {len(qualified_block):02} data block, '
+                            f'for missing:{missing_length:04}, bin_id:{bin_id}, {col}' )
+                qualified_block = qualified_block.sample(sample_count) #, random_state=1
+            else:
+                logger.info(f'Check model, Will generate {len(qualified_block):02} sample for missing:{missing_length:04}, '
+                            f'bin_id:{bin_id}, {col}')
+
+            for index, cur_block in qualified_block.iterrows():
+                begin, end = cur_block.begin, cur_block.end
+                # Get the data without missing
+                block = train.loc[begin:end]
+
+                #missing_length = max(missing_length,2)
+
+                #logger.info(f'missing_length:{missing_length}')
+                if reverse < 0:
+                    val_feature = block.iloc[missing_length * -4 : missing_length * -3]
+                else:
+                    val_feature = block.iloc[missing_length * 3: missing_length * 4]
+
+                #logger.debug(block.head(10))
+
+                #logger.debug(val_feature)
+
+
+                logger.debug(f'Begin:{begin}, end:{end},{missing_length * 3}/{missing_length * 4}({len(block)})/ block len:{len(block)}, '
+                             f'reverse:{reverse}:missing_length/val:{missing_length}')
+
+                train_feature = get_train_df_by_val(train, val_feature, window) #Train
+
+                logger.info(f'blockid:{index} , train_shape:{train_feature.shape} '
+                            f'[{train.index.min()}, [{val_feature.index.min()}, {val_feature.index.max()}], {train.index.max()}]'
+                             f'train_t_sn:{train_feature.time_sn.min()}, {train_feature.time_sn.min()},'
+                             f' val_time_sn:{val_feature.time_sn.min()}:{val_feature.time_sn.max()}')
+
+                feature_list.append((train_feature, val_feature, index))
+                # logger.debug(f'Train:{train_feature.shape}, Val:{val_feature.shape}')
+    if len(feature_list) == 0:
+        logger.warning(f'Can not find row for:{arg_loc}')
+
+    return feature_list
+
+
+
 @timed()
 def check_score(args, reverse):
     """
@@ -18,7 +129,7 @@ def check_score(args, reverse):
     :param args:
         window:[0.5-n]
         momenta_col_length:[1-100]
-        momenta_impact_length:[100-400]
+        momenta_impact_ratio:[100-400]
         input_file_num:[1-n]
         related_col_count:[0-n]
         time_sn:True/False
@@ -28,10 +139,10 @@ def check_score(args, reverse):
     """
     import matplotlib.pyplot as plt
 
-    wtid = args['wtid']
+    bin_id = args['bin_id']
     col = args['col_name']
 
-    train_list = get_train_sample_list(wtid, col, args.file_num, args.window, reverse)
+    train_list = get_train_sample_list(bin_id, col, args.file_num, args.window, reverse)
 
     count, loss = 0, 0
 
@@ -60,26 +171,26 @@ def check_score(args, reverse):
     # avg_loss = round(loss/count, 4)
 
     return loss, count
-
-@lru_cache()
-def get_closed_wtid_list(wtid):
-
-    wtid_count =2
-    col_num = 4
-    s = pd.Series()
-
-    std = get_std_all()
-    col_list = std.loc[std.wtid == wtid].sort_values('mean', ascending=False).col.head(col_num).values
-    for col_name in col_list:
-        cor = get_corr_wtid(col_name)
-        #print(cor.columns)
-        related_wtid_list = cor[f'{col_name}_{wtid}'].sort_values(ascending=False)[:wtid_count]
-        related_wtid_list = [ int(item.split('_')[1]) for item in related_wtid_list.index.values]
-        #print('===', sorted(related_wtid_list))
-        s = s.append(pd.Series(related_wtid_list), ignore_index=True)
-    s = s.value_counts()
-    closed_list = list(s[s>=col_num].index)
-    return sorted(closed_list)
+#
+# @lru_cache()
+# def get_closed_wtid_list(wtid):
+#
+#     wtid_count =2
+#     col_num = 4
+#     s = pd.Series()
+#
+#     std = get_std_all()
+#     col_list = std.loc[std.wtid == wtid].sort_values('mean', ascending=False).col.head(col_num).values
+#     for col_name in col_list:
+#         cor = get_corr_wtid(col_name)
+#         #print(cor.columns)
+#         related_wtid_list = cor[f'{col_name}_{wtid}'].sort_values(ascending=False)[:wtid_count]
+#         related_wtid_list = [ int(item.split('_')[1]) for item in related_wtid_list.index.values]
+#         #print('===', sorted(related_wtid_list))
+#         s = s.append(pd.Series(related_wtid_list), ignore_index=True)
+#     s = s.value_counts()
+#     closed_list = list(s[s>=col_num].index)
+#     return sorted(closed_list)
 
 def summary_all_best_score(wtid_list=[-1], top_n=0, **kwargs):
     df = pd.DataFrame()
@@ -106,9 +217,10 @@ def check_score_all():
         pool.map(check_score_column, col_list, chunksize=1)
     except Exception as e:
         logger.exception(e)
-        return
+        os._exit(9)
 
-    logger.debug(f'It is done for {check_options().wtid}')
+
+    logger.debug(f'It is done for bin_id:{check_options().bin_id}')
 
 def get_args_mini(col_name, para_name, top_n=3):
     tmp = merge_score_col(col_name, [1,2,3]) #get_mini_args
@@ -155,15 +267,15 @@ def get_momenta_col_length(col_name):
         return [1,2,3,4]
 
 @lru_cache()
-def get_momenta_impact_length(col_name):
-    if check_options().mini > 0:
-        return get_args_mini(col_name, 'momenta_impact_length', check_options().mini)
+def get_momenta_impact_ratio(col_name):
+    # if check_options().mini > 0:
+    #     return get_args_mini(col_name, 'momenta_impact_length', check_options().mini)
 
     is_enum = True if 'int' in date_type[col_name].__name__ else False
     if is_enum:
-        return [0]
+        return [1]
     else:
-        return [100, 200, 300,400, 500, 600]
+        return [0.1,0.2,0.3,0.4,0.5]
 
 def get_time_sn(col_name):
     is_enum = True if 'int' in date_type[col_name].__name__ else False
@@ -222,7 +334,7 @@ def check_existing(df, args):
            (df.file_num == args.file_num) &
            (df.window == args.window) &
            (df.momenta_col_length == args.momenta_col_length) &
-           (df.momenta_impact_length == args.momenta_impact_length) &
+           (df.momenta_impact_ratio == args.momenta_impact_ratio) &
            (df.related_col_count == args.related_col_count) &
            (df.drop_threshold == args.drop_threshold) &
            (df.time_sn == args.time_sn) &
@@ -244,9 +356,10 @@ def check_existing(df, args):
 
 @timed()
 def check_score_column(col_name):
-    wtid = check_options().wtid
-    class_name = 'lr'
-    score_file = f'./score/{class_name}/{wtid:02}/{col_name}.h5'
+
+    bin_id = check_options().bin_id
+    gp_name = check_options().gp_name
+    score_file = f'./score/{gp_name}/{bin_id:02}/{col_name}.h5'
     if check_exising_his(score_file):
         his_df = pd.read_hdf(score_file,'/his')
         latest = his_df.sort_values('ct', ascending=False).iloc[0]
@@ -258,27 +371,30 @@ def check_score_column(col_name):
             return None
         else:
             logger.info(f'Last time is @{col_name} at {latest.ct}')
-    heart_beart(score_file, 'dummpy')
+    heart_beart(score_file, f'dummpy for:{col_name}, bin_id:{bin_id}')
 
     # model = check_options().model
     try:
         score_df = pd.read_hdf(score_file,'score')
     except Exception as e:
-        logger.info(f'No score is found for :{col_name} wtid:{wtid}')
+        logger.info(f'No existing score is found for :{col_name} bin_id:{bin_id}')
         score_df = pd.DataFrame()
 
     processed_count = 0
 
-    arg_list = get_args_missing(col_name, todo_wtid=wtid)
+    arg_list = get_args_missing(col_name, todo_bin_id=bin_id)
 
-    logger.info(f'Mini:{check_options().mini}, Current sample:{score_df.shape}, {col_name},wtid:{wtid}' )
+    logger.info(f'Mini:{check_options().mini}, Todo:{len(arg_list)} Current sample:{score_df.shape}, {col_name},bin_id:{bin_id}' )
 
     heart_beart(score_file, f'Existing:{len(score_df)}, todo:{len(arg_list)}, type:{date_type[col_name].__name__}')
 
     for sn, args in arg_list.iterrows():
-
-        score, count = check_score(args, reverse = -1)
-        args['score'] = round(score/count, 4)
+        try:
+            score, count = check_score(args, reverse = -1)
+        except Exception as e:
+            logger.exception(e)
+            os._exit(2)
+        args['score'] = round(score/count, 4) if count else 0
         args['score_total'] = score
         args['score_count'] = count
         args['ct'] = pd.to_datetime('now')
@@ -310,10 +426,9 @@ def check_score_column(col_name):
 def get_args_all(col_name):
     df = pd.DataFrame()
     arg_list = []
-    wtid = check_options().wtid
     window = 0.7
     momenta_col_length = 1
-    momenta_impact_length = 300
+    momenta_impact_ratio = 0.1
     time_sn = True
     related_col_count = 0
     drop_threshold = 1
@@ -321,15 +436,15 @@ def get_args_all(col_name):
     for window in get_window(col_name):
         window = round(window, 1)
         for momenta_col_length in get_momenta_col_length(col_name):
-            for momenta_impact_length in get_momenta_impact_length(col_name):
+            for momenta_impact_ratio in get_momenta_impact_ratio(col_name):
                 for time_sn in get_time_sn(col_name):
                     for file_num in get_file_num(col_name):
-                        args = {#'wtid': wtid,
+                        args = {
                                 'col_name': col_name,
                                 'file_num': file_num,
                                 'window': window,
                                 'momenta_col_length': momenta_col_length,
-                                'momenta_impact_length': momenta_impact_length,
+                                'momenta_impact_ratio': momenta_impact_ratio,
                                 'related_col_count': related_col_count,
                                 'drop_threshold': drop_threshold,
                                 'time_sn': time_sn,
@@ -339,7 +454,7 @@ def get_args_all(col_name):
                         # arg_list.append(args)
                         df = df.append(args,ignore_index=True)
 
-    return fill_ext_arg(df, col_name)
+    return df #fill_ext_arg(df, col_name)
 
 def fill_ext_arg(df, col_name):
     if check_options().mini < 1:
@@ -373,18 +488,25 @@ def fill_ext_arg(df, col_name):
     return df[col_list]
 
 
+@lru_cache()
 @timed()
-def get_args_missing(col_name, todo_wtid):
+def get_args_missing(col_name, todo_bin_id):
     todo = get_args_all(col_name)
 
-    #base = pd.read_hdf(f'./score/lr/{base_wtid:02}/{col_name}.h5', 'score')
+    score_file = f'./score/lr_bin/{todo_bin_id:02}/{col_name}.h5'
     try:
-        base = pd.read_hdf(f'./score/lr/{todo_wtid:02}/{col_name}.h5', 'score')
+        base = pd.read_hdf(score_file, 'score')
         original_len = len(base)
     except Exception as e:
-        logger.debug(f'It is a new task for {col_name}, wtid:{todo_wtid}')
-        todo['wtid'] = todo_wtid
+        logger.info(f'It is a new task for {col_name}, todo_bin_id:{todo_bin_id}')
+        original_len = 0
+
+
+    if original_len == 0 :
+        logger.info(f'No data is found from file:{score_file}, todo:{todo.shape}')
+        todo['bin_id'] = todo_bin_id
         return todo
+
 
     # print(col_list)
 
@@ -392,8 +514,8 @@ def get_args_missing(col_name, todo_wtid):
 
     todo = todo.merge(base, how='left', on=model_paras)
     todo = todo.loc[pd.isna(todo.ct) & pd.isna(todo.wtid)][model_paras].reset_index(drop=True)
-    todo['wtid'] = int(todo_wtid)
-    logger.info(f'Have {len(todo)} todo, original:{original_len}, {col_name}, wtid:{todo_wtid}')
+    todo['bin_id'] = int(todo_bin_id)
+    logger.info(f'Have {len(todo)} todo, original:{original_len}, {col_name}, todo_bin_id:{todo_bin_id}')
     return todo
 
 
@@ -402,14 +524,22 @@ def check_options():
     import argparse
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--wtid", type=int, default=1)
-    parser.add_argument("--check_gap", type=int, default=15)
+    parser.add_argument("--bin_count", type=int, default=10, help="How many bins will split for each column")
+    parser.add_argument("--bin_id", type=int, default=10)
+    parser.add_argument("--check_gap", type=int, default=10, help="Mins to lock the score file")
+    parser.add_argument("--gp_name", type=str, default='lr_bin', help="The folder name to save score")
+
 
     parser.add_argument("-D", '--debug', action='store_true', default=False)
     parser.add_argument("-W", '--warning', action='store_true', default=False)
     parser.add_argument("-L", '--log', action='store_true', default=False)
-    parser.add_argument("--thread", type=int, default=8)
+    if local:
+        thread_num = 1
+    else:
+        thread_num = 8
+    parser.add_argument("--thread", type=int, default=thread_num)
     parser.add_argument('--mini', type=int, default=3, help='enable the Mini model' )
+    parser.add_argument("--check_cnt", type=int, default=3)
 
     # parser.add_argument('--model', type=str, default='missing', help='missing, new')
 
@@ -427,7 +557,7 @@ def check_options():
     if args.log:
         import socket
         host_name = socket.gethostname()[-1:]
-        file = f'score_{args.wtid:02}_{host_name}.log'
+        file = f'score_{args.bin_id:02}_{host_name}.log'
 
         handler = logging.FileHandler(file, 'a')
         handler.setFormatter(format)
@@ -454,8 +584,8 @@ def merge_score_col(col_name, wtid_list):
 
     for wtid in wtid_list:
         wtid = f'{wtid:02}' if wtid is not None and wtid > 0 else '*'
-        match = f"./score/*/{wtid}/*.h5"
-        #logger.debug(f'Match:{match}')
+        match = f"./score/lr/{wtid}/*.h5"
+        logger.info(f'Match:{match}')
         for file_name in sorted(glob(match)):
             #logger.debug(f'get file_name:{file_name} with {match}')
             if col_name in file_name:

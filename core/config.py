@@ -10,7 +10,7 @@ model_paras = ['class_name', 'col_name',
                'drop_threshold',
                #'add_features',
                'file_num',
-               'momenta_col_length', 'momenta_impact_length',
+               'momenta_col_length', 'momenta_impact_ratio',
                'related_col_count',
                'time_sn',
                'window',]

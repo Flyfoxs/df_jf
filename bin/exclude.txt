@@ -21,6 +21,7 @@
 output
 cache
 sub
+score
 
 #input
 **/*.csv

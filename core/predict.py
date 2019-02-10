@@ -18,12 +18,14 @@ def get_predict_fun(train, args):
 def predict_stable_col(train, val, threshold=0.5):
     cur_ratio = train.iloc[:, 0].value_counts().iloc[:2].sum()/len(train)
 
-    if cur_ratio >  threshold:
+    if cur_ratio >=  threshold:
         half = len(train)//2
 
+        #TOP value in the begin
         val_1 = train.iloc[:half, 0].value_counts().index[0]
         res_1 = np.ones(len(val)//2)*val_1
 
+        #TOP value in the end
         val_2 = train.iloc[half:, 0].value_counts().index[0]
         res_2 = np.ones(len(val) - (len(val)//2)) * val_2
 
@@ -63,8 +65,12 @@ def get_momenta_value(arr_begin, arr_end):
 def get_cut_predict(train, val, args):
     from sklearn.linear_model import Ridge, LinearRegression
 
+    if len(val) <=5 :
+        logger.info(f'The input val is len:{len(val)}')
+        return predict_stable_col(train, val, 0 )
+
     momenta_col_length = int(args.momenta_col_length)
-    momenta_impact_length = int(args.momenta_impact_length)
+    momenta_impact_length = max(1, int(args.momenta_impact_ratio*len(val)))
     enable_time = args.time_sn
 
     clf = LinearRegression()
@@ -78,7 +84,7 @@ def get_cut_predict(train, val, args):
                  f'{train.columns} ({args.time_sn})')
     clf.fit(train.iloc[:, 1:], train.iloc[:, 0])
 
-    cut_len = min(momenta_impact_length, len(val)//3)
+    cut_len = max(min(momenta_impact_length, len(val)//2-1),1)
 
     block_begin = val.index.min()
     block_end = val.index.max()
@@ -91,11 +97,18 @@ def get_cut_predict(train, val, args):
 
     begin_val, end_val = get_momenta_value(begin_val_arr, end_val_arr )
 
-    logger.debug(f'====Begin_val:{begin_val}:{begin_val_arr}, end_val:{begin_val}:{end_val_arr}, ')
+    logger.info(f'====Begin_val:{begin_val}:{begin_val_arr}, end_val:{begin_val}:{end_val_arr},'
+                f' predict range:{cut_len}:{len(val)-cut_len}, cut_len:{cut_len} ')
+    if len(val) == 1:
+        logger.info(f'====Begin_val:{begin_val}:{begin_val_arr}, end_val:{begin_val}:{end_val_arr}, ')
 
-    return np.hstack((np.ones(cut_len) * begin_val,
+
+    res = np.hstack((np.ones(cut_len) * begin_val,
                       clf.predict(val.iloc[cut_len:len(val)-cut_len]),
                       np.ones(cut_len) * end_val
                       ))
+
+
+    return res
 
 

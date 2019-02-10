@@ -171,6 +171,7 @@ def get_data_block_all():
     return pd.concat(df_list)
 
 
+
 @lru_cache()
 def get_blocks():
     train = get_data_block_all()
@@ -228,69 +229,6 @@ def get_missing_block_single(wtid, col, cur_missing):
     begin = train[col].loc[:cur_missing].dropna(how='any').index.max() + 1
     end   = train[col].loc[cur_missing:].dropna(how='any').index.min() - 1
     return begin, end
-
-
-#TODO
-#@timed()
-@lru_cache(maxsize=32)
-def get_train_sample_list(wtid, col, file_num, window, reverse=-1):
-
-    # args = DefaultMunch(None, json.loads(args_json))
-    feature_list = []
-
-    block = get_blocks()
-
-    train_block = block.loc[(block.wtid == wtid) & (block.col == col) & (block.kind == 'train')]
-
-    missing_block = block.loc[(block.wtid == wtid) & (block.col == col) & (block.kind == 'missing')]
-    #
-    # from asyncio import Lock
-    #
-    # lock = Lock()
-    # with lock:
-    train = get_train_feature_multi_file(wtid, col, file_num)
-
-    for missing_length in missing_block['length'].sort_values().values:
-
-        # if args.file_num==1:
-        #     cur_windows = round(missing_length * 0.7)
-        # else:
-        #     cur_windows = missing_length * 2
-        at_least_len_for_block = int(10 * missing_length)
-        logger.debug(
-            f'get_train_feature:file_num={file_num}, at_least_len_for_block={at_least_len_for_block},  '
-            f'missing_len/Need_Validate={missing_length}')
-
-        for index, cur_block in (train_block[train_block['length'] >= at_least_len_for_block]).iterrows():
-            begin, end = cur_block.begin, cur_block.end
-            # Get the data without missing
-            block = train.loc[begin:end]
-
-            #missing_length = max(missing_length,2)
-
-            #logger.info(f'missing_length:{missing_length}')
-            if reverse < 0:
-                val_feature = block.iloc[missing_length * -4 : missing_length * -3]
-            else:
-                val_feature = block.iloc[missing_length * 3: missing_length * 4]
-
-            #logger.debug(block.head(10))
-
-            #logger.debug(val_feature)
-
-
-            logger.debug(f'Begin:{begin}, end:{end},{missing_length * 3}/{missing_length * 4}({len(block)})/ block len:{len(block)}, reverse:{reverse}:missing_length/val:{missing_length}')
-
-            train_feature = get_train_df_by_val(train, val_feature, window) #Train
-
-            logger.debug(f'blockid:{index} , train_shape:{train_feature.shape} '
-                         f'train_t_sn:{train_feature.time_sn.min()}, {train_feature.time_sn.min()},'
-                         f' val_time_sn:{val_feature.time_sn.min()}:{val_feature.time_sn.max()}')
-
-            feature_list.append((train_feature, val_feature, index))
-            # logger.debug(f'Train:{train_feature.shape}, Val:{val_feature.shape}')
-
-    return feature_list
 
 
 def get_train_df_by_val(train,val_feature, window):
