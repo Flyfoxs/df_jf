@@ -41,9 +41,8 @@ def get_wtid_list_by_bin_id(bin_id, bin_count):
     df = get_miss_blocks_ex(bin_count) #get_wtid_list_by_bin_id
     return df.loc[df.bin_id==bin_id].wtid.drop_duplicates().values
 
-#TODO
-@lru_cache(maxsize=32)
 @timed()
+@lru_cache(maxsize=32)
 def get_train_sample_list(bin_id, col, file_num, window, set_list='0', reverse=True):
     arg_loc = locals()
 
@@ -156,7 +155,7 @@ def check_score(args, set_list):
     bin_id = args['bin_id']
     col = args['col_name']
 
-    train_list = get_train_sample_list(bin_id, col, args.file_num, args.window, set_list)
+    train_list = get_train_sample_list(bin_id, col, int(args.file_num), round(args.window,1), set_list)
 
     count, loss = 0, 0
 
@@ -239,6 +238,79 @@ def check_score_all():
         os._exit(9)
 
 
+@lru_cache()
+def estimate_score(top_n, gp_name):
+    best_score = pd.DataFrame()
+    for col_name in get_predict_col():
+        file = f'./score/{gp_name}/*'
+        from glob import glob
+        for file in sorted(glob(file)):
+            bin_id = int(file.split('/')[-1])
+            para = get_best_para(gp_name, col_name, bin_id, top_n=top_n) #estimate_score
+            best_score = best_score.append(para, ignore_index=True)
+    return best_score
+
+
+def get_args_dynamic(col_name):
+    is_enum = True if 'int' in date_type[col_name].__name__ else False
+
+    if is_enum:
+        return pd.DataFrame()
+
+    gp_name = check_options().gp_name
+    try:
+        tmp = estimate_score(0, gp_name)
+    except Exception as e:
+        logger.exception(e)
+        return pd.DataFrame()
+    tmp = tmp.loc[(tmp.col_name == col_name)][model_paras].drop_duplicates()
+
+    dynamic_args = pd.DataFrame()
+
+    for sn, arg in tmp.iterrows():
+        # File
+        arg_tmp = arg.copy()
+        arg_tmp.file_num = max(1, arg_tmp.file_num - 1)
+        dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
+
+        arg_tmp = arg.copy()
+        arg_tmp.file_num = arg_tmp.file_num + 1
+        dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
+
+        arg_tmp = arg.copy()
+        arg_tmp.file_num = arg_tmp.file_num + 2
+        dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
+
+        # Window
+
+        if arg.window >= 1 and arg.window <= 6:
+            ratio = 2
+        elif arg.window < 1:
+            ratio = 1
+        else:
+            ratio = 0
+
+        arg_tmp = arg.copy()
+        arg_tmp.window = max(0.1, arg_tmp.window - 0.1 * ratio)
+        dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
+
+        arg_tmp = arg.copy()
+        arg_tmp.window = max(0.1, arg_tmp.window - 0.2 * ratio)
+        dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
+
+        arg_tmp = arg.copy()
+        arg_tmp.window = arg_tmp.window + 0.1 * ratio
+        dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
+
+        arg_tmp = arg.copy()
+        arg_tmp.window = arg_tmp.window + 0.2 * ratio
+        dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
+
+    return dynamic_args
+
+
+
+@timed()
 def get_args_mini(col_name, para_name, top_n=3):
     tmp = merge_score_col(col_name, [1,2,3]) #get_mini_args
 
@@ -246,24 +318,8 @@ def get_args_mini(col_name, para_name, top_n=3):
     tmp.columns = ['_'.join(items) for items in tmp.columns]
     tmp = tmp.sort_values('score_mean', ascending=False)
 
-    # wtid_list = [
-    #     '1,2,3',
-    #     '1',
-    #     '2',
-    #     '3',
-    #     '4',
-    #     '1,2,3,4',
-    #     '30',
-    #     '31',
-    #     '32',
-    #     '33'
-    # ]
     args = set(tmp.index.values[:top_n])
-    # for wtid_tmp in wtid_list:
-    #     best = get_best_para(col_name, wtid_tmp, 0)[para_name]
-    #     if best not in args:
-    #         logger.warning(f'The best arg:{best} is not found from {args}, which base on {col_name}, {para_name}, {top_n}')
-    #         args.add(best)
+
     return args
 
 @lru_cache()
@@ -387,7 +443,7 @@ def check_score_column(bin_col):
             logger.warning(f'Ignore this time for {col_name}, since the server:{latest.server} already save in {round(gap)} mins ago, {latest.ct}')
             return None
         else:
-            logger.info(f'Last time is @{col_name} at {latest.ct}')
+            logger.info(f'Start to process {bin_col} Last time is at {latest.ct}')
     heart_beart(score_file, f'dummpy for:{col_name}, bin_id:{bin_id}')
 
     # model = check_options().model
@@ -397,9 +453,13 @@ def check_score_column(bin_col):
         logger.info(f'No existing score is found for :{col_name} bin_id:{bin_id}')
         score_df = pd.DataFrame()
 
-    processed_count = 0
 
-    arg_list = get_args_missing(col_name, bin_id)
+    processed_count = 0
+    try:
+        arg_list = get_args_missing(col_name, bin_id)
+    except Exception as e:
+        logger.exception(e)
+        logger.error(f'Fail to get missing arg for:{col_name}, {bin_id}')
 
     logger.info(f'Mini:{check_options().mini}, Todo:{len(arg_list)} Current sample:{score_df.shape}, {col_name},bin_id:{bin_id}' )
 
@@ -471,45 +531,17 @@ def get_args_all(col_name):
                         # arg_list.append(args)
                         df = df.append(args,ignore_index=True)
 
-    return df #fill_ext_arg(df, col_name)
-#
-# def fill_ext_arg(df, col_name):
-#     if check_options().mini < 1:
-#         return df
-#     col_list = df.columns
-#     old_len = len(df)
-#
-#     wtid_list = [
-#         '1,2,3',
-#         '1,2,3,4',
-#         '1,2,3,4,5',
-#         '30,31, 32, 33',
-#         '1,2,3,4,  30,31, 32, 33',
-#         '1,2,3,4,5,30,31, 32, 33',
-#         '1',
-#         '2',
-#         '3',
-#         '4',
-#         '30',
-#         '31',
-#         '32',
-#         '33'
-#     ]
-#     for wtid_tmp in wtid_list:
-#         gp_name = check_options().gp_name
-#         best = get_best_para(gp_name, col_name, wtid_tmp, 0)
-#         df = df.append(best)
-#
-#     df = df.drop_duplicates(col_list)
-#
-#     logger.info(f'There are {len(df)-old_len} args add to list({old_len}) for col_name:{col_name}, original_df:{col_list}')
-#     return df[col_list]
+    return df
 
 
 @lru_cache()
 @timed()
 def get_args_missing(col_name, bin_id):
-    todo = get_args_all(col_name)
+    original = get_args_all(col_name)
+
+    dynamic = get_args_dynamic(col_name)
+
+    todo = pd.concat([original, dynamic])
 
     gp_name = check_options().gp_name
     score_file = f'./score/{gp_name}/{bin_id:02}/{col_name}.h5'
@@ -532,10 +564,12 @@ def get_args_missing(col_name, bin_id):
     #base = base.rename(columns={'ct': 'ct_old', 'wtid': 'wtid_old'})
 
     todo = todo.merge(base, how='left', on=model_paras)
-    todo = todo.loc[pd.isna(todo.ct) & pd.isna(todo.wtid)][model_paras].reset_index(drop=True)
+    todo = todo.loc[pd.isna(todo.ct) & pd.isna(todo.bin_id)][model_paras].reset_index(drop=True)
     todo['bin_id'] = int(bin_id)
     logger.info(f'Have {len(todo)} todo, original:{original_len}, {col_name}, bin_id:{bin_id}')
     return todo
+
+
 
 
 @lru_cache()
@@ -605,7 +639,7 @@ def merge_score_col(col_name, wtid_list):
     for wtid in wtid_list:
         wtid = f'{wtid:02}' if wtid is not None and wtid > 0 else '*'
         match = f"./score/lr/{wtid}/*.h5"
-        logger.info(f'Match:{match}')
+        #logger.info(f'Match:{match}')
         for file_name in sorted(glob(match)):
             #logger.debug(f'get file_name:{file_name} with {match}')
             if col_name in file_name:
@@ -662,5 +696,5 @@ if __name__ == '__main__':
     check_score_all()
 
     """
-    python ./core/check.py -L  --bin_count 8 --gp_name lr_bin_8 > debug.log 2>&1 &
+    python ./core/check.py -L  --bin_count 8 --gp_name lr_bin_8  --set_list 0 > check.log 2>&1 &
     """

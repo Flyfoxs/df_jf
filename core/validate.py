@@ -56,4 +56,5 @@ if __name__ == '__main__':
     python ./core/validate.py --set_list 3,2 --gp_name lr_bin_5 > val.log 2>&1 &
     python ./core/validate.py --set_list 3 --gp_name lr_bin_5 > val.log 2>&1 &
     python ./core/validate.py --set_list 2 --gp_name lr_bin_5 > val.log 2>&1 &
+    python ./core/validate.py --set_list -1 --gp_name lr_bin_5 > val.log 2>&1 &
     """

@@ -54,18 +54,6 @@ def predict_wtid(wtid):
     return convert_enum(train_ex)
 
 
-@lru_cache()
-def estimate_score(top_n, gp_name):
-    best_score = pd.DataFrame()
-    for col_name in get_predict_col():
-        file = f'./score/{gp_name}/*'
-        from glob import glob
-        for file in sorted(glob(file)):
-            bin_id = int(file.split('/')[-1])
-            para = get_best_para(gp_name, col_name, bin_id, top_n=top_n) #estimate_score
-            best_score = best_score.append(para, ignore_index=True)
-    return best_score
-
 @file_cache(overwrite=True)
 def predict_all(version):
     args = options()
@@ -163,7 +151,7 @@ if __name__ == '__main__':
 
 
     """
-    python core/submit.py -L --gp_name lr_bin_8 --version 0211_v2 > sub.log 2>&1 &
+    python core/submit.py -L --gp_name lr_bin_8 --version 0211_v3 > sub.log 2>&1 &
 
     """
 

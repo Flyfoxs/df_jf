@@ -86,9 +86,8 @@ def get_sub_template():
     return template
 
 
-
-@lru_cache(maxsize=cache_size)
 @timed()
+@lru_cache(maxsize=cache_size)
 def get_train_ex(wtid):
     wtid = str(wtid)
     train = pd.read_csv(f"./input/{wtid.rjust(3,'0')}/201807.csv", parse_dates=['ts'])
