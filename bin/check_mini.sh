@@ -12,7 +12,7 @@ do
     python ./core/check.py -L                   \
                         --bin_count $bin_count  \
                         --bin_id $i             \
-                        --gp_name lr_bin_$i     \
+                        --gp_name lr_bin_$bin_count     \
                         > log/bin_"$(hostname)"_$i.log 2>&1
 done
 

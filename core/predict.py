@@ -97,10 +97,8 @@ def get_cut_predict(train, val, args):
 
     begin_val, end_val = get_momenta_value(begin_val_arr, end_val_arr )
 
-    logger.info(f'====Begin_val:{begin_val}:{begin_val_arr}, end_val:{begin_val}:{end_val_arr},'
+    logger.debug(f'====Begin_val:{begin_val}:{begin_val_arr}, end_val:{begin_val}:{end_val_arr},'
                 f' predict range:{cut_len}:{len(val)-cut_len}, cut_len:{cut_len} ')
-    if len(val) == 1:
-        logger.info(f'====Begin_val:{begin_val}:{begin_val_arr}, end_val:{begin_val}:{end_val_arr}, ')
 
 
     res = np.hstack((np.ones(cut_len) * begin_val,

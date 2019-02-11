@@ -6,8 +6,9 @@ def validate():
 
     from multiprocessing import Pool as ThreadPool  # 进程
 
+    total_bin_id = 5
     pool = ThreadPool(8)
-    score_list = pool.map(validate_wtid, range(1, 34), chunksize=1)
+    score_list = pool.map(validate_bin_id, range(0, total_bin_id), chunksize=1)
 
     score_df = pd.concat(score_list)
 
@@ -22,18 +23,18 @@ def validate():
     logger.info(f'Val save to file:{score_file}')
 
 
-def validate_wtid(wtid):
+def validate_bin_id(bin_id):
 
     score_df = pd.DataFrame()
 
     for col_name in get_predict_col():
 
-        args = get_best_para(col_name, str(wtid), top_n=0) #validate
-        args['wtid'] = wtid
+        args = get_best_para(col_name, bin_id, top_n=0) #validate
+        args['bin_id'] = bin_id
         logger.debug(args)
         score, count = check_score(args, reverse = 1)
 
-        logger.info(f'wtid:{wtid:02},{col_name},Current score is{score:.4f} wtih:{args}')
+        logger.info(f'bin_id:{bin_id:02},{col_name},Current score is{score:.4f} wtih:{args}')
         #args['score'] = score
         args['score'] = round(score / count, 4)
         args['score_total'] = score
@@ -41,7 +42,7 @@ def validate_wtid(wtid):
         args['ct'] = pd.to_datetime('now')
         score_df = score_df.append(args, ignore_index=True)
 
-    logger.info(f'Validate score {len(score_df)},{col_name},wtid:{wtid} is :{score_df.score.mean()}')
+    logger.info(f'Validate score {len(score_df)},{col_name},bin_id:{bin_id} is :{score_df.score.mean()}')
 
     return score_df
 
@@ -49,3 +50,7 @@ def validate_wtid(wtid):
 if __name__ == '__main__':
     logging.getLogger().setLevel(logging.INFO)
     validate()
+
+    """
+    python ./core/validate.py --check_cnt 1 --gp_name lr_bin_5 > val.log 2>&1 &
+    """

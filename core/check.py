@@ -10,7 +10,16 @@ import fire
 from core.predict import *
 
 @lru_cache()
-def get_miss_blocks_ex(bin_num=5, kind='cut' ):
+@timed()
+def get_miss_blocks_ex(bin_num=None, gp_name=None, kind ='cut' ):
+
+    if bin_num is None and gp_name is not None:
+        file = f'./score/{gp_name}/*'
+        bin_num = len(glob(file))
+    elif bin_num is None and gp_name is None:
+        logger.exception(f'Need input in_num or gp_name')
+        raise Exception(f'Need input in_num or gp_name')
+
     blk_list = []
     blk = get_blocks()
     blk = blk.loc[blk.kind=='missing']
@@ -76,11 +85,11 @@ def get_train_sample_list(bin_id, col, file_num, window, reverse=-1):
 
             if reverse == 1: #Validate model
                 sample_count = min(check_options().check_cnt, len(qualified_block))
-                logger.info(f'It is in validate model, only pick {sample_count:02} from {len(qualified_block):02} data block, '
+                logger.debug(f'It is in validate model, only pick {sample_count:02} from {len(qualified_block):02} data block, '
                             f'for missing:{missing_length:04}, bin_id:{bin_id}, {col}' )
                 qualified_block = qualified_block.sample(sample_count) #, random_state=1
             else:
-                logger.info(f'Check model, Will generate {len(qualified_block):02} sample for missing:{missing_length:04}, '
+                logger.debug(f'Check model, Will generate {len(qualified_block):02} sample for missing:{missing_length:04}, '
                             f'bin_id:{bin_id}, {col}')
 
             for index, cur_block in qualified_block.iterrows():
@@ -106,7 +115,7 @@ def get_train_sample_list(bin_id, col, file_num, window, reverse=-1):
 
                 train_feature = get_train_df_by_val(train, val_feature, window) #Train
 
-                logger.info(f'blockid:{index} , train_shape:{train_feature.shape} '
+                logger.debug(f'blockid:{index} , train_shape:{train_feature.shape} '
                             f'[{train.index.min()}, [{val_feature.index.min()}, {val_feature.index.max()}], {train.index.max()}]'
                              f'train_t_sn:{train_feature.time_sn.min()}, {train_feature.time_sn.min()},'
                              f' val_time_sn:{val_feature.time_sn.min()}:{val_feature.time_sn.max()}')
@@ -195,7 +204,8 @@ def check_score(args, reverse):
 def summary_all_best_score(wtid_list=[-1], top_n=0, **kwargs):
     df = pd.DataFrame()
     for col in get_predict_col():
-        df = df.append(get_best_para(col, wtid_list, top_n, **kwargs), ignore_index=True) # summary_all_best_score
+        gp_name = check_options().gp_name
+        df = df.append(get_best_para(gp_name, col, wtid_list, top_n, **kwargs), ignore_index=True) # summary_all_best_score
 
     df['data_type'] = df.col_name.apply(lambda val: date_type[val].__name__)
 
@@ -212,15 +222,17 @@ def check_score_all():
     pool = ThreadPool(check_options().thread)
 
     #summary = summary_all_best_score()
-    col_list = get_predict_col()
+
+    bin_count = check_options().bin_count
+    import itertools
+    bin_col_list = itertools.product(range(0, bin_count), get_predict_col(), )
+
     try:
-        pool.map(check_score_column, col_list, chunksize=1)
+        pool.map(check_score_column, bin_col_list, chunksize=1)
     except Exception as e:
         logger.exception(e)
         os._exit(9)
 
-
-    logger.debug(f'It is done for bin_id:{check_options().bin_id}')
 
 def get_args_mini(col_name, para_name, top_n=3):
     tmp = merge_score_col(col_name, [1,2,3]) #get_mini_args
@@ -355,9 +367,9 @@ def check_existing(df, args):
 
 
 @timed()
-def check_score_column(col_name):
+def check_score_column(bin_col):
+    bin_id , col_name = bin_col
 
-    bin_id = check_options().bin_id
     gp_name = check_options().gp_name
     score_file = f'./score/{gp_name}/{bin_id:02}/{col_name}.h5'
     if check_exising_his(score_file):
@@ -382,7 +394,7 @@ def check_score_column(col_name):
 
     processed_count = 0
 
-    arg_list = get_args_missing(col_name, todo_bin_id=bin_id)
+    arg_list = get_args_missing(col_name, bin_id)
 
     logger.info(f'Mini:{check_options().mini}, Todo:{len(arg_list)} Current sample:{score_df.shape}, {col_name},bin_id:{bin_id}' )
 
@@ -455,56 +467,58 @@ def get_args_all(col_name):
                         df = df.append(args,ignore_index=True)
 
     return df #fill_ext_arg(df, col_name)
-
-def fill_ext_arg(df, col_name):
-    if check_options().mini < 1:
-        return df
-    col_list = df.columns
-    old_len = len(df)
-
-    wtid_list = [
-        '1,2,3',
-        '1,2,3,4',
-        '1,2,3,4,5',
-        '30,31, 32, 33',
-        '1,2,3,4,  30,31, 32, 33',
-        '1,2,3,4,5,30,31, 32, 33',
-        '1',
-        '2',
-        '3',
-        '4',
-        '30',
-        '31',
-        '32',
-        '33'
-    ]
-    for wtid_tmp in wtid_list:
-        best = get_best_para(col_name, wtid_tmp, 0)
-        df = df.append(best)
-
-    df = df.drop_duplicates(col_list)
-
-    logger.info(f'There are {len(df)-old_len} args add to list({old_len}) for col_name:{col_name}, original_df:{col_list}')
-    return df[col_list]
+#
+# def fill_ext_arg(df, col_name):
+#     if check_options().mini < 1:
+#         return df
+#     col_list = df.columns
+#     old_len = len(df)
+#
+#     wtid_list = [
+#         '1,2,3',
+#         '1,2,3,4',
+#         '1,2,3,4,5',
+#         '30,31, 32, 33',
+#         '1,2,3,4,  30,31, 32, 33',
+#         '1,2,3,4,5,30,31, 32, 33',
+#         '1',
+#         '2',
+#         '3',
+#         '4',
+#         '30',
+#         '31',
+#         '32',
+#         '33'
+#     ]
+#     for wtid_tmp in wtid_list:
+#         gp_name = check_options().gp_name
+#         best = get_best_para(gp_name, col_name, wtid_tmp, 0)
+#         df = df.append(best)
+#
+#     df = df.drop_duplicates(col_list)
+#
+#     logger.info(f'There are {len(df)-old_len} args add to list({old_len}) for col_name:{col_name}, original_df:{col_list}')
+#     return df[col_list]
 
 
 @lru_cache()
 @timed()
-def get_args_missing(col_name, todo_bin_id):
+def get_args_missing(col_name, bin_id):
     todo = get_args_all(col_name)
 
-    score_file = f'./score/lr_bin/{todo_bin_id:02}/{col_name}.h5'
+    gp_name = check_options().gp_name
+    score_file = f'./score/{gp_name}/{bin_id:02}/{col_name}.h5'
     try:
         base = pd.read_hdf(score_file, 'score')
         original_len = len(base)
     except Exception as e:
-        logger.info(f'It is a new task for {col_name}, todo_bin_id:{todo_bin_id}')
+        logger.info(f'It is a new task for {col_name}, todo_bin_id:{bin_id}')
         original_len = 0
 
 
     if original_len == 0 :
         logger.info(f'No data is found from file:{score_file}, todo:{todo.shape}')
-        todo['bin_id'] = todo_bin_id
+        todo['bin_id'] = bin_id
         return todo
 
 
@@ -514,8 +528,8 @@ def get_args_missing(col_name, todo_bin_id):
 
     todo = todo.merge(base, how='left', on=model_paras)
     todo = todo.loc[pd.isna(todo.ct) & pd.isna(todo.wtid)][model_paras].reset_index(drop=True)
-    todo['bin_id'] = int(todo_bin_id)
-    logger.info(f'Have {len(todo)} todo, original:{original_len}, {col_name}, todo_bin_id:{todo_bin_id}')
+    todo['bin_id'] = int(bin_id)
+    logger.info(f'Have {len(todo)} todo, original:{original_len}, {col_name}, bin_id:{bin_id}')
     return todo
 
 
@@ -525,7 +539,7 @@ def check_options():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--bin_count", type=int, default=10, help="How many bins will split for each column")
-    parser.add_argument("--bin_id", type=int, default=10)
+    #parser.add_argument("--bin_id", type=int, default=10)
     parser.add_argument("--check_gap", type=int, default=10, help="Mins to lock the score file")
     parser.add_argument("--gp_name", type=str, default='lr_bin', help="The folder name to save score")
 
@@ -539,7 +553,7 @@ def check_options():
         thread_num = 8
     parser.add_argument("--thread", type=int, default=thread_num)
     parser.add_argument('--mini', type=int, default=3, help='enable the Mini model' )
-    parser.add_argument("--check_cnt", type=int, default=3)
+    parser.add_argument("--check_cnt", type=int, default=3, help='How many sample need to generate for each missing block')
 
     # parser.add_argument('--model', type=str, default='missing', help='missing, new')
 
@@ -557,7 +571,7 @@ def check_options():
     if args.log:
         import socket
         host_name = socket.gethostname()[-1:]
-        file = f'score_{args.bin_id:02}_{host_name}.log'
+        file = f'score_{host_name}.log'
 
         handler = logging.FileHandler(file, 'a')
         handler.setFormatter(format)
@@ -606,14 +620,9 @@ def merge_score_col(col_name, wtid_list):
 
 @lru_cache()
 @timed()
-def get_best_para(col_name, wtid_list=[-1], top_n=0, **kwargs):
-    if isinstance(wtid_list, str):
-        logger.info(f'wtid_list:{wtid_list}')
-        wtid_list = wtid_list.split(',')
-        logger.info(f'wtid_list:{wtid_list}')
-        wtid_list = [int(item) for item in wtid_list if item ]
-
-    tmp = merge_score_col(col_name, wtid_list) # get_best_score
+def get_best_para(gp_name, col_name, bin_id, top_n=0, **kwargs):
+    score_file = f'./score/{gp_name}/{bin_id:02}/{col_name}.h5'
+    tmp = pd.read_hdf(score_file, 'score')  # get_best_score
     for k, v in kwargs.items():
         tmp_check = tmp.loc[tmp[k]<=v]
         if len(tmp_check) == 0 :
@@ -622,9 +631,9 @@ def get_best_para(col_name, wtid_list=[-1], top_n=0, **kwargs):
             tmp = tmp_check
 
 
-    tmp = tmp.groupby(model_paras).agg({'score':['mean', 'count','min', 'max'], 'wtid':'nunique'}).reset_index()
-    tmp.columns = ['_'.join(item) if item[1] else item[0] for item in tmp.columns]
-    tmp = tmp.sort_values(['score_mean', 'score_count'], ascending=False)
+    # tmp = tmp.groupby(model_paras).agg({'score':['mean', 'count','min', 'max']}).reset_index()
+    # tmp.columns = ['_'.join(item) if item[1] else item[0] for item in tmp.columns]
+    tmp = tmp.sort_values(['score', 'window','momenta_impact_ratio'], ascending=False)
     tmp = tmp.rename(columns={'score_mean':'score'})
 
     return tmp.iloc[int(top_n)]
@@ -645,3 +654,7 @@ if __name__ == '__main__':
     logger.info(f'Program with:{args} ')
 
     check_score_all()
+
+    """
+    python ./core/check.py -L  --bin_count 8 --gp_name lr_bin_8 > debug.log 2>&1 &
+    """
