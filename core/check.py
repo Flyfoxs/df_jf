@@ -44,8 +44,11 @@ def get_wtid_list_by_bin_id(bin_id, bin_count):
 #TODO
 @lru_cache(maxsize=32)
 @timed()
-def get_train_sample_list(bin_id, col, file_num, window, reverse=-1):
+def get_train_sample_list(bin_id, col, file_num, window, set_list='0', reverse=True):
     arg_loc = locals()
+
+    set_list = set_list.split(',')
+    set_list = [int(item) for item in set_list]
 
     # args = DefaultMunch(None, json.loads(args_json))
     feature_list = []
@@ -77,20 +80,22 @@ def get_train_sample_list(bin_id, col, file_num, window, reverse=-1):
 
             qualified_block = train_block[train_block['length'] >= at_least_len_for_block]
 
-            qualified_block = qualified_block[:1] #Max is 4
+            qualified_block = qualified_block.sort_values('length')
 
+            qualified_block = qualified_block.iloc[set_list,:] #Max is 4
 
-            if len(qualified_block) <=0 :
-                logger.exception(f'There is no qualified block was found for missing_length:{missing_length},bin_id:{bin_id}, {col} ')
-
-            if reverse == 1: #Validate model
-                sample_count = min(check_options().check_cnt, len(qualified_block))
-                logger.debug(f'It is in validate model, only pick {sample_count:02} from {len(qualified_block):02} data block, '
-                            f'for missing:{missing_length:04}, bin_id:{bin_id}, {col}' )
-                qualified_block = qualified_block.sample(sample_count) #, random_state=1
-            else:
-                logger.debug(f'Check model, Will generate {len(qualified_block):02} sample for missing:{missing_length:04}, '
-                            f'bin_id:{bin_id}, {col}')
+            #
+            # if len(qualified_block) <=0 :
+            #     logger.exception(f'There is no qualified block was found for missing_length:{missing_length},bin_id:{bin_id}, {col} ')
+            #
+            # if reverse == 1: #Validate model
+            #     sample_count = min(check_options().check_cnt, len(qualified_block))
+            #     logger.debug(f'It is in validate model, only pick {sample_count:02} from {len(qualified_block):02} data block, '
+            #                 f'for missing:{missing_length:04}, bin_id:{bin_id}, {col}' )
+            #     qualified_block = qualified_block.sample(sample_count) #, random_state=1
+            # else:
+            #     logger.debug(f'Check model, Will generate {len(qualified_block):02} sample for missing:{missing_length:04}, '
+            #                 f'bin_id:{bin_id}, {col}')
 
             for index, cur_block in qualified_block.iterrows():
                 begin, end = cur_block.begin, cur_block.end
@@ -100,7 +105,7 @@ def get_train_sample_list(bin_id, col, file_num, window, reverse=-1):
                 #missing_length = max(missing_length,2)
 
                 #logger.info(f'missing_length:{missing_length}')
-                if reverse < 0:
+                if reverse:
                     val_feature = block.iloc[missing_length * -4 : missing_length * -3]
                 else:
                     val_feature = block.iloc[missing_length * 3: missing_length * 4]
@@ -130,7 +135,7 @@ def get_train_sample_list(bin_id, col, file_num, window, reverse=-1):
 
 
 @timed()
-def check_score(args, reverse):
+def check_score(args, set_list):
     """
 
     :param wtid:
@@ -151,7 +156,7 @@ def check_score(args, reverse):
     bin_id = args['bin_id']
     col = args['col_name']
 
-    train_list = get_train_sample_list(bin_id, col, args.file_num, args.window, reverse)
+    train_list = get_train_sample_list(bin_id, col, args.file_num, args.window, set_list)
 
     count, loss = 0, 0
 
@@ -402,7 +407,7 @@ def check_score_column(bin_col):
 
     for sn, args in arg_list.iterrows():
         try:
-            score, count = check_score(args, reverse = -1)
+            score, count = check_score(args, set_list = '0')
         except Exception as e:
             logger.exception(e)
             os._exit(2)
@@ -542,18 +547,19 @@ def check_options():
     #parser.add_argument("--bin_id", type=int, default=10)
     parser.add_argument("--check_gap", type=int, default=10, help="Mins to lock the score file")
     parser.add_argument("--gp_name", type=str, default='lr_bin', help="The folder name to save score")
-
+    parser.add_argument("--set_list", type=str, default='0', required=True, help="The folder name to save score")
 
     parser.add_argument("-D", '--debug', action='store_true', default=False)
     parser.add_argument("-W", '--warning', action='store_true', default=False)
     parser.add_argument("-L", '--log', action='store_true', default=False)
+
     if local:
         thread_num = 1
     else:
         thread_num = 8
     parser.add_argument("--thread", type=int, default=thread_num)
     parser.add_argument('--mini', type=int, default=3, help='enable the Mini model' )
-    parser.add_argument("--check_cnt", type=int, default=3, help='How many sample need to generate for each missing block')
+    #parser.add_argument("--check_cnt", type=int, default=3, help='How many sample need to generate for each missing block')
 
     # parser.add_argument('--model', type=str, default='missing', help='missing, new')
 

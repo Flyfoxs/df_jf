@@ -147,10 +147,7 @@ def options():
 
 
 if __name__ == '__main__':
-    """
-    python core/submit.py --gp_name lr_bin_5 --version 0210_v1 -L > sub.log 2>&1 &
 
-    """
     #fire.Fire()
 
     # score_df = check_score_all(version='0126')
@@ -163,15 +160,10 @@ if __name__ == '__main__':
     # logger.info(sub.shape)
 
     submit = predict_all(options().version)
-    #
-    # score_df = check_score_all(pic=False)
-    # score_avg = round(score_df.iloc[:, -5].mean(), 4), round(score_df.iloc[:, -5:].max(axis=1).mean(), 4)
-    # score_avg = [ str(item) for  item in score_avg]
-    # logger.info(f'The validate score is {score_avg} for args:{options()}')
-    #
-    # file = f'./output/score_{options()}_{score_avg}.h5'
-    # file = replace_invalid_filename_char(file)
-    # score_df.to_hdf(file, key='score')
-    # logger.info(f'All socre is save to :{file}')
 
+
+    """
+    python core/submit.py -L --gp_name lr_bin_8 --version 0211_v2 > sub.log 2>&1 &
+
+    """
 

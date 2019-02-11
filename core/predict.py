@@ -66,7 +66,7 @@ def get_cut_predict(train, val, args):
     from sklearn.linear_model import Ridge, LinearRegression
 
     if len(val) <=5 :
-        logger.info(f'The input val is len:{len(val)}')
+        logger.debug(f'The input val is len:{len(val)}')
         return predict_stable_col(train, val, 0 )
 
     momenta_col_length = int(args.momenta_col_length)

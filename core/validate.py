@@ -13,7 +13,8 @@ def validate():
     score_df = pd.concat(score_list)
 
     avg = round(score_df.score_total.sum()/score_df.score_count.sum(),7)
-    score_file = f'./score/val/validate_{avg :.6f}({score_df.score.mean():.6f})_cnt_{check_options().check_cnt}.h5'
+    score_file = f'./score/val/validate_{avg :.6f}({score_df.score.mean():.6f})' \
+                 f'_cnt_{check_options().set_list}_{check_options().gp_name}.h5'
 
     path = os.path.dirname(score_file)
     os.makedirs(path, exist_ok=True)
@@ -28,11 +29,11 @@ def validate_bin_id(bin_id):
     score_df = pd.DataFrame()
 
     for col_name in get_predict_col():
-
-        args = get_best_para(col_name, bin_id, top_n=0) #validate
+        args = get_best_para(check_options().gp_name, col_name, bin_id, top_n=0) #validate
         args['bin_id'] = bin_id
         logger.debug(args)
-        score, count = check_score(args, reverse = 1)
+
+        score, count = check_score(args, check_options().set_list)
 
         logger.info(f'bin_id:{bin_id:02},{col_name},Current score is{score:.4f} wtih:{args}')
         #args['score'] = score
@@ -52,5 +53,7 @@ if __name__ == '__main__':
     validate()
 
     """
-    python ./core/validate.py --check_cnt 1 --gp_name lr_bin_5 > val.log 2>&1 &
+    python ./core/validate.py --set_list 3,2 --gp_name lr_bin_5 > val.log 2>&1 &
+    python ./core/validate.py --set_list 3 --gp_name lr_bin_5 > val.log 2>&1 &
+    python ./core/validate.py --set_list 2 --gp_name lr_bin_5 > val.log 2>&1 &
     """
