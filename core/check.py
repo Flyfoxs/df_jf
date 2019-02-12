@@ -159,7 +159,13 @@ def check_score(args, set_list):
 
     count, loss = 0, 0
 
+    min_len, max_len, = 999999999 , 0
+
+    block_count = len(train_list)
+
     for train, val, blockid in train_list :
+        min_len = min(min_len, len(val))
+        max_len = max(max_len, len(val))
 
         is_enum = True if 'int' in date_type[col].__name__ else False
         logger.debug(f'Blockid#{blockid}, train:{train.shape}, val:{val.shape}, file_num:{args.file_num}')
@@ -183,7 +189,7 @@ def check_score(args, set_list):
         logger.debug(f'blockid:{blockid}, {train.shape}, {val.shape}, score={round(cur_loss/cur_count,3)}')
     # avg_loss = round(loss/count, 4)
 
-    return loss, count
+    return loss, count, min_len, max_len , block_count
 #
 # @lru_cache()
 # def get_closed_wtid_list(wtid):
@@ -218,6 +224,7 @@ def summary_all_best_score(wtid_list=[-1], top_n=0, **kwargs):
 
 @timed()
 def check_score_all():
+
 
     #from multiprocessing.dummy import Pool as ThreadPool #线程
     from multiprocessing import Pool as ThreadPool  # 进程
@@ -261,7 +268,7 @@ def get_args_dynamic(col_name):
     try:
         tmp = estimate_score(0, gp_name)
     except Exception as e:
-        logger.exception(e)
+        logger.warning(e)
         return pd.DataFrame()
     tmp = tmp.loc[(tmp.col_name == col_name)][model_paras].drop_duplicates()
 
@@ -369,12 +376,11 @@ def get_file_num(col_name):
 
 def check_exising_his(score_file):
     try:
-        with pd.HDFStore(score_file) as store:
-            key_list = store.keys()
-            if '/his' in key_list and  len(store['his']) > 0:
-                return True
-            else:
-                return False
+        his = pd.read_hdf(score_file, 'his')
+        if len(his) > 0:
+            return True
+        else:
+            return False
     except Exception as e:
         path = os.path.dirname(score_file)
         os.makedirs(path, exist_ok=True)
@@ -382,48 +388,53 @@ def check_exising_his(score_file):
 
 
 def heart_beart(score_file, msg):
-    path = os.path.dirname (score_file)
-    os.makedirs(path, exist_ok=True)
 
-    # Heart beat
-    import socket
-    host_name = socket.gethostname()
-    if check_exising_his(score_file):
-        his_df = pd.read_hdf(score_file, '/his')
-    else:
-        his_df = pd.DataFrame()
+    try:
+        path = os.path.dirname (score_file)
+        os.makedirs(path, exist_ok=True)
 
-    his_df = his_df.append({'ct': pd.to_datetime('now'), 'server': host_name, 'msg':msg}, ignore_index=True)
-    his_df.to_hdf(score_file, 'his')
+        # Heart beat
+        import socket
+        host_name = socket.gethostname()
+        if check_exising_his(score_file):
+            his_df = pd.read_hdf(score_file, '/his')
+        else:
+            his_df = pd.DataFrame()
 
+        his_df = his_df.append({'ct': pd.to_datetime('now'), 'server': host_name, 'msg':msg}, ignore_index=True)
+        his_df.to_hdf(score_file, 'his', model='a')
+    except Exception as e:
+        logger.exception(e)
+        logger.error(f'Error happen when heart beart:{score_file}, {msg}')
+        raise e
     return his_df
-
-def check_existing(df, args):
-    logger.debug(f'check_existing, df:{df.columns}')
-    if len(df)==0:
-        return False
-    tmp= df.loc[
-           (df.wtid == args.wtid) &
-           (df.file_num == args.file_num) &
-           (df.window == args.window) &
-           (df.momenta_col_length == args.momenta_col_length) &
-           (df.momenta_impact_ratio == args.momenta_impact_ratio) &
-           (df.related_col_count == args.related_col_count) &
-           (df.drop_threshold == args.drop_threshold) &
-           (df.time_sn == args.time_sn) &
-           (df.drop_threshold == args.drop_threshold) &
-           (df.class_name == args.class_name)
-            ]
-    if len(tmp)==0:
-        return False
-    elif len(tmp)==1:
-        logger.info(f'Already existing score for:{args}')
-        return True
-    else:
-        logger.exception(f'Exception status for len:{len(tmp)} {args}')
-        raise Exception(f'Exception status for len:{len(tmp)} {args}')
-
-
+#
+# def check_existing(df, args):
+#     logger.debug(f'check_existing, df:{df.columns}')
+#     if len(df)==0:
+#         return False
+#     tmp= df.loc[
+#            (df.wtid == args.wtid) &
+#            (df.file_num == args.file_num) &
+#            (df.window == args.window) &
+#            (df.momenta_col_length == args.momenta_col_length) &
+#            (df.momenta_impact_ratio == args.momenta_impact_ratio) &
+#            (df.related_col_count == args.related_col_count) &
+#            (df.drop_threshold == args.drop_threshold) &
+#            (df.time_sn == args.time_sn) &
+#            (df.drop_threshold == args.drop_threshold) &
+#            (df.class_name == args.class_name)
+#             ]
+#     if len(tmp)==0:
+#         return False
+#     elif len(tmp)==1:
+#         logger.info(f'Already existing score for:{args}')
+#         return True
+#     else:
+#         logger.exception(f'Exception status for len:{len(tmp)} {args}')
+#         raise Exception(f'Exception status for len:{len(tmp)} {args}')
+#
+#
 
 
 
@@ -467,13 +478,16 @@ def check_score_column(bin_col):
 
     for sn, args in arg_list.iterrows():
         try:
-            score, count = check_score(args, set_list = '0')
+            score, count, min_len, max_len , block_count = check_score(args, set_list = '0')
         except Exception as e:
             logger.exception(e)
-            os._exit(2)
+            raise e
         args['score'] = round(score/count, 4) if count else 0
         args['score_total'] = score
         args['score_count'] = count
+        args['min_len'] = min_len
+        args['max_len'] = max_len
+        args['block_count'] = block_count
         args['ct'] = pd.to_datetime('now')
 
         score_df = score_df.append(args, ignore_index=True)
@@ -579,7 +593,7 @@ def check_options():
 
     parser.add_argument("--bin_count", type=int, default=10, help="How many bins will split for each column")
     #parser.add_argument("--bin_id", type=int, default=10)
-    parser.add_argument("--check_gap", type=int, default=10, help="Mins to lock the score file")
+    parser.add_argument("--check_gap", type=int, default=15, help="Mins to lock the score file")
     parser.add_argument("--gp_name", type=str, default='lr_bin', help="The folder name to save score")
     parser.add_argument("--set_list", type=str, default='0', required=True, help="The folder name to save score")
 
@@ -689,6 +703,9 @@ def score(val1, val2, enum=False):
     return len(val1), round(loss, 4)
 
 
+def get_qualified_block(missing_block, window, shift):
+    pass
+
 if __name__ == '__main__':
     args = check_options()
     logger.info(f'Program with:{args} ')
@@ -696,5 +713,5 @@ if __name__ == '__main__':
     check_score_all()
 
     """
-    python ./core/check.py -L  --bin_count 8 --gp_name lr_bin_8  --set_list 0 > check.log 2>&1 &
+    python ./core/check.py -L  --bin_count 8 --gp_name lr_bin_8  --set_list 0 > check1.log 2>&1 &
     """
