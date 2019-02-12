@@ -151,7 +151,7 @@ if __name__ == '__main__':
 
 
     """
-    python core/submit.py -L --gp_name lr_bin_8 --version 0211_v3 > sub.log 2>&1 &
+    python core/submit.py -L --gp_name lr_bin_8 --version 0212_v1 > sub.log 2>&1 &
 
     """
 

@@ -86,7 +86,7 @@ def get_sub_template():
     return template
 
 
-@timed()
+@timed(level='debug')
 @lru_cache(maxsize=cache_size)
 def get_train_ex(wtid):
     wtid = str(wtid)

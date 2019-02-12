@@ -237,9 +237,10 @@ def check_score_all():
     bin_count = check_options().bin_count
     import itertools
     bin_col_list = itertools.product(range(0, bin_count), get_predict_col(), )
+    #bin_col_list = [(5,'var029')]
 
     try:
-        pool.map(check_score_column, bin_col_list, chunksize=1)
+        pool.map(check_score_column, bin_col_list)
     except Exception as e:
         logger.exception(e)
         os._exit(9)
@@ -388,7 +389,7 @@ def check_exising_his(score_file):
 
 
 def heart_beart(score_file, msg):
-
+    from tables.exceptions import HDF5ExtError
     try:
         path = os.path.dirname (score_file)
         os.makedirs(path, exist_ok=True)
@@ -403,6 +404,11 @@ def heart_beart(score_file, msg):
 
         his_df = his_df.append({'ct': pd.to_datetime('now'), 'server': host_name, 'msg':msg}, ignore_index=True)
         his_df.to_hdf(score_file, 'his', model='a')
+    except HDF5ExtError as e:
+        score_df = pd.read_hdf(score_file, 'score')
+        score_df.to_hdf(score_file, 'score', mode='w')
+        his_df.to_hdf(score_file, 'his')
+        logger.error(f'Rewrite the hdf5 his key, keep score:{score_df.shape} format is incorrect:{score_file}')
     except Exception as e:
         logger.exception(e)
         logger.error(f'Error happen when heart beart:{score_file}, {msg}')
@@ -452,10 +458,10 @@ def check_score_column(bin_col):
         gap = (pd.to_datetime('now') - latest.ct) / timedelta(minutes=1)
         if gap <= check_options().check_gap:
             logger.warning(f'Ignore this time for {col_name}, since the server:{latest.server} already save in {round(gap)} mins ago, {latest.ct}')
-            return None
+            return -1
         else:
             logger.info(f'Start to process {bin_col} Last time is at {latest.ct}')
-    heart_beart(score_file, f'dummpy for:{col_name}, bin_id:{bin_id}')
+    #heart_beart(score_file, f'dummpy for:{col_name}, bin_id:{bin_id}')
 
     # model = check_options().model
     try:
@@ -512,6 +518,8 @@ def check_score_column(bin_col):
     his_df.to_hdf(score_file, 'his')
 
     logger.info(f'There are {processed_count} process for {col_name}, Current total:{len(score_df)}')
+
+    return len(arg_list)
 
 
 def get_args_all(col_name):
@@ -703,7 +711,7 @@ def score(val1, val2, enum=False):
     return len(val1), round(loss, 4)
 
 
-def get_qualified_block(missing_block, window, shift):
+def get_closed_block(missing_block, window, shift):
     pass
 
 if __name__ == '__main__':
