@@ -33,7 +33,7 @@ def validate_bin_id(bin_id):
         args['bin_id'] = bin_id
         logger.debug(args)
 
-        score, count = check_score(args, check_options().set_list)
+        score, count, min_len, max_len, block_count = check_score(args, check_options().set_list)
 
         logger.info(f'bin_id:{bin_id:02},{col_name},Current score is{score:.4f} wtih:{args}')
         #args['score'] = score

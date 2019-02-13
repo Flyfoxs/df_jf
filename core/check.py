@@ -240,7 +240,7 @@ def check_score_all():
     #bin_col_list = [(5,'var029')]
 
     try:
-        pool.map(check_score_column, bin_col_list)
+        pool.map(check_score_column, bin_col_list, chunksize=1)
     except Exception as e:
         logger.exception(e)
         os._exit(9)
@@ -446,80 +446,81 @@ def heart_beart(score_file, msg):
 
 @timed()
 def check_score_column(bin_col):
-    bin_id , col_name = bin_col
+    with factory.create_lock(str(bin_col)):
+        bin_id , col_name = bin_col
 
-    gp_name = check_options().gp_name
-    score_file = f'./score/{gp_name}/{bin_id:02}/{col_name}.h5'
-    if check_exising_his(score_file):
-        his_df = pd.read_hdf(score_file,'/his')
-        latest = his_df.sort_values('ct', ascending=False).iloc[0]
+        gp_name = check_options().gp_name
+        score_file = f'./score/{gp_name}/{bin_id:02}/{col_name}.h5'
+        if check_exising_his(score_file):
+            his_df = pd.read_hdf(score_file,'/his')
+            latest = his_df.sort_values('ct', ascending=False).iloc[0]
 
-        from datetime import timedelta
-        gap = (pd.to_datetime('now') - latest.ct) / timedelta(minutes=1)
-        if gap <= check_options().check_gap:
-            logger.warning(f'Ignore this time for {col_name}, since the server:{latest.server} already save in {round(gap)} mins ago, {latest.ct}')
-            return -1
-        else:
-            logger.info(f'Start to process {bin_col} Last time is at {latest.ct}')
-    #heart_beart(score_file, f'dummpy for:{col_name}, bin_id:{bin_id}')
+            from datetime import timedelta
+            gap = (pd.to_datetime('now') - latest.ct) / timedelta(minutes=1)
+            if gap <= check_options().check_gap:
+                logger.warning(f'Ignore this time for {col_name}, since the server:{latest.server} already save in {round(gap)} mins ago, {latest.ct}')
+                return -1
+            else:
+                logger.info(f'Start to process {bin_col} Last time is at {latest.ct}')
+        #heart_beart(score_file, f'dummpy for:{col_name}, bin_id:{bin_id}')
 
-    # model = check_options().model
-    try:
-        score_df = pd.read_hdf(score_file,'score')
-    except Exception as e:
-        logger.info(f'No existing score is found for :{col_name} bin_id:{bin_id}')
-        score_df = pd.DataFrame()
-
-
-    processed_count = 0
-    try:
-        arg_list = get_args_missing(col_name, bin_id)
-    except Exception as e:
-        logger.exception(e)
-        logger.error(f'Fail to get missing arg for:{col_name}, {bin_id}')
-
-    logger.info(f'Mini:{check_options().mini}, Todo:{len(arg_list)} Current sample:{score_df.shape}, {col_name},bin_id:{bin_id}' )
-
-    heart_beart(score_file, f'Existing:{len(score_df)}, todo:{len(arg_list)}, type:{date_type[col_name].__name__}')
-
-    for sn, args in arg_list.iterrows():
+        # model = check_options().model
         try:
-            score, count, min_len, max_len , block_count = check_score(args, set_list = '0')
+            score_df = pd.read_hdf(score_file,'score')
+        except Exception as e:
+            logger.info(f'No existing score is found for :{col_name} bin_id:{bin_id}')
+            score_df = pd.DataFrame()
+
+
+        processed_count = 0
+        try:
+            arg_list = get_args_missing(col_name, bin_id)
         except Exception as e:
             logger.exception(e)
-            raise e
-        args['score'] = round(score/count, 4) if count else 0
-        args['score_total'] = score
-        args['score_count'] = count
-        args['min_len'] = min_len
-        args['max_len'] = max_len
-        args['block_count'] = block_count
-        args['ct'] = pd.to_datetime('now')
+            logger.error(f'Fail to get missing arg for:{col_name}, {bin_id}')
 
-        score_df = score_df.append(args, ignore_index=True)
-        logger.info(f'Current df:{score_df.shape}, last score is {score:.4f} wtih:\n{args}')
+        logger.info(f'Mini:{check_options().mini}, Todo:{len(arg_list)} Current sample:{score_df.shape}, {col_name},bin_id:{bin_id}' )
 
-        processed_count += 1
+        heart_beart(score_file, f'Existing:{len(score_df)}, todo:{len(arg_list)}, type:{date_type[col_name].__name__}')
 
-        if processed_count % 100 ==0:
-            score_df.to_hdf(score_file, 'score')
-            heart_beart(score_file, f'processed:{processed_count}/current:{len(score_df)}, type:{date_type[col_name].__name__}')
+        for sn, args in arg_list.iterrows():
+            try:
+                score, count, min_len, max_len , block_count = check_score(args, set_list = '0')
+            except Exception as e:
+                logger.exception(e)
+                raise e
+            args['score'] = round(score/count, 4) if count else 0
+            args['score_total'] = score
+            args['score_count'] = count
+            args['min_len'] = min_len
+            args['max_len'] = max_len
+            args['block_count'] = block_count
+            args['ct'] = pd.to_datetime('now')
 
-    his_df = heart_beart(score_file, f'Done:{processed_count}/current:{len(score_df)}, type:{date_type[col_name].__name__}')
+            score_df = score_df.append(args, ignore_index=True)
+            logger.info(f'Current df:{score_df.shape}, last score is {score:.4f} wtih:\n{args}')
 
-    score_df.ct = score_df.ct.astype('str')
-    score_df = score_df.sort_values('ct',ascending=False)
-    len_with_dup = len(score_df)
-    score_df = score_df.drop_duplicates(model_paras)
-    remove_len = len_with_dup - len(score_df)
-    if remove_len > 0:
-        logger.warning(f'There are {remove_len} records are removed, current len is:{len(score_df)}, old:{len_with_dup}')
-    score_df.to_hdf(score_file, 'score', mode='w')
-    his_df.to_hdf(score_file, 'his')
+            processed_count += 1
 
-    logger.info(f'There are {processed_count} process for {col_name}, Current total:{len(score_df)}')
+            if processed_count % 100 ==0:
+                score_df.to_hdf(score_file, 'score')
+                heart_beart(score_file, f'processed:{processed_count}/current:{len(score_df)}, type:{date_type[col_name].__name__}')
 
-    return len(arg_list)
+        his_df = heart_beart(score_file, f'Done:{processed_count}/current:{len(score_df)}, type:{date_type[col_name].__name__}')
+
+        score_df.ct = score_df.ct.astype('str')
+        score_df = score_df.sort_values('ct',ascending=False)
+        len_with_dup = len(score_df)
+        score_df = score_df.drop_duplicates(model_paras)
+        remove_len = len_with_dup - len(score_df)
+        if remove_len > 0:
+            logger.warning(f'There are {remove_len} records are removed, current len is:{len(score_df)}, old:{len_with_dup}')
+        score_df.to_hdf(score_file, 'score', mode='w')
+        his_df.to_hdf(score_file, 'his')
+
+        logger.info(f'There are {processed_count} process for {col_name}, Current total:{len(score_df)}')
+
+        return len(arg_list)
 
 
 def get_args_all(col_name):
@@ -679,12 +680,12 @@ def merge_score_col(col_name, wtid_list):
     return all
 
 
-
-@lru_cache()
 @timed()
+@lru_cache()
 def get_best_para(gp_name, col_name, bin_id, top_n=0, **kwargs):
     score_file = f'./score/{gp_name}/{bin_id:02}/{col_name}.h5'
     tmp = pd.read_hdf(score_file, 'score')  # get_best_score
+    tmp = tmp.loc[tmp.bin_id==bin_id]
     for k, v in kwargs.items():
         tmp_check = tmp.loc[tmp[k]<=v]
         if len(tmp_check) == 0 :
@@ -711,8 +712,38 @@ def score(val1, val2, enum=False):
     return len(val1), round(loss, 4)
 
 
-def get_closed_block(missing_block, window, shift):
-    pass
+def get_closed_block(missing_block, window, shift, after=True):
+    print(DefaultMunch(None, missing_block))
+    window_len =  (2 * window + 1 )  * missing_block.length \
+             + shift* (window+1) * missing_block
+
+    bk = get_blocks()
+    closed = bk.loc[(bk.col == missing_block.col)
+                    & (bk.kind == 'train')
+                    & (bk.length >= window_len)
+        # &(bk.col==col)
+                    ]
+    if after:
+        closed = closed.loc[closed.begin > missing_block.begin]
+        #Closed After
+        if len(closed) > 0:
+            return closed.iloc[0]
+    else:
+        #Closed Before
+        closed = closed.loc[closed.begin < missing_block.begin]
+        if len(closed) > 0:
+            return closed.iloc[-1]
+
+    if len(closed) == 0:
+        if after:
+            closed = closed.loc[closed.begin < missing_block.begin]
+            if len(closed) > 0:
+                return closed.iloc[-1]
+        else:
+            closed = closed.loc[closed.begin > missing_block.begin]
+            if len(closed) > 0:
+                return closed.iloc[0]
+
 
 if __name__ == '__main__':
     args = check_options()

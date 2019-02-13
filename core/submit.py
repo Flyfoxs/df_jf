@@ -72,7 +72,7 @@ def predict_all(version):
 
     from multiprocessing import Pool as ThreadPool  # 进程
 
-    pool = ThreadPool(8)
+    pool = ThreadPool(16)
     train_list  = pool.map(predict_wtid, range(1, 34))
 
     train_all = pd.concat(train_list)#.set_index(['ts', 'wtid'])
@@ -133,6 +133,45 @@ def options():
     return args
 
 
+#@timed()
+def get_submit_feature_by_block_id(blockid, para ):
+    cur_block = get_blocks().loc[blockid]
+    logger.debug(f'cur_block:\n{cur_block}')
+
+    kind = cur_block['kind']
+    col_name = cur_block['col']
+    wtid = cur_block['wtid']
+    missing_length = cur_block['length']
+    begin, end = cur_block.begin, cur_block.end
+
+
+    submit = get_train_feature_multi_file(wtid, col_name, para.file_num)
+
+
+    val_feature = submit.loc[begin:end]
+
+    logger.debug(f'wtid:{wtid}, col:{col_name}, file_num:{para.file_num},   blockid:{blockid}')
+    logger.debug(f'Train columns:{submit.columns}')
+
+    train_feature = get_train_df_by_val(submit, val_feature, para.window) #submit
+
+    logger.debug(f'original: {train_feature.shape}, {val_feature.shape}')
+    #
+    # time_gap = max(30, val_feature.time_sn.max() - val_feature.time_sn.min())
+    # time_begin = val_feature.time_sn.min() - 5 * time_gap
+    # time_end = val_feature.time_sn.max() + 5 * time_gap
+    # # Make the train closed to validate
+    # train_feature = train_feature[(train_feature.time_sn >= time_begin) & (train_feature.time_sn <= time_end)]
+    #
+    # logger.debug(f'new(filter by time): {train_feature.shape}, {val_feature.shape}')
+    #
+    # logger.debug(f'{kind}:train_feature:{train_feature.columns}')
+    # logger.debug(f'{kind}:val_feature:{val_feature.columns}')
+    # if len(train_feature) == 0 or len(val_feature) == 0:
+    #     logger.exception(f'train_feature#{kind}:{train_feature.shape}, val_feature:{val_feature.shape} for blockid:{blockid}, cur_file_num:{cur_file_num}')
+    #     raise Exception('Error when get feature')
+    return train_feature, val_feature
+
 
 if __name__ == '__main__':
 
@@ -151,7 +190,7 @@ if __name__ == '__main__':
 
 
     """
-    python core/submit.py -L --gp_name lr_bin_8 --version 0212_v1 > sub.log 2>&1 &
+    python core/submit.py -L --gp_name lr_bin_8 --version 0213_v1 > sub.log 2>&1 &
 
     """
 

@@ -88,6 +88,16 @@ date_type={
 
 }
 
+from core.security import redis_pass
+from redlock import RedLockFactory
+factory = RedLockFactory(
+    connection_details=[
+
+        {'host': '10.224.38.31', 'port': 8690, 'db': 13, 'password':redis_pass},
+        #{'host': '10.224.38.43','port': 8690, 'db': 13, 'password':redis_pass },
+
+    ])
+
 
 try:
     from core.config_local import *
