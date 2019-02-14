@@ -11,9 +11,8 @@ def predict_wtid(wtid):
     block_list = get_miss_blocks_ex(gp_name=gp_name)
 
     train_ex = get_train_ex(wtid)
-    file = f'./score/{gp_name}/*'
-    for file in sorted(glob(file)):
-        bin_id = int(file.split('/')[-1])
+    bin_list = get_bin_id_list(gp_name)
+    for bin_id in bin_list:
         for blockid, missing_block in block_list.loc[
                     (block_list.wtid == wtid) &
                     (block_list.kind == 'missing') &
@@ -83,7 +82,7 @@ def predict_all(version):
     submit = submit[['ts', 'wtid']].merge(train_all, how='left', on=['ts', 'wtid'])
     submit = round(submit, 2)
 
-    file = f"./output/submit_{args}_score={score_avg}.csv"
+    file = f"./output/submit_{score_avg:.6f}_{args}.csv"
     submit = submit.iloc[:, :70]
     file = replace_invalid_filename_char(file)
     submit.to_csv(file,index=None)
@@ -190,7 +189,7 @@ if __name__ == '__main__':
 
 
     """
-    python core/submit.py -L --gp_name lr_bin_8 --version 0213_v1 > sub.log 2>&1 &
+    python core/submit.py -L --gp_name lr_bin_9 --version 0214_v2 > sub.log 2>&1 &
 
     """
 

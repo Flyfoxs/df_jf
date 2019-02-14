@@ -1,6 +1,9 @@
 import sys
 import os
 
+sys.path.insert(99, './df_jf')
+sys.path.insert(99, '../df_jf')
+sys.path.insert(99, '/users/hdpsbp/felix/file_cache')
 
 from core.config import *
 import pandas as pd
@@ -87,7 +90,7 @@ def get_sub_template():
 
 
 @timed(level='debug')
-@lru_cache(maxsize=cache_size)
+@lru_cache(maxsize=68)
 def get_train_ex(wtid):
     wtid = str(wtid)
     train = pd.read_csv(f"./input/{wtid.rjust(3,'0')}/201807.csv", parse_dates=['ts'])
@@ -251,7 +254,7 @@ def get_train_df_by_val(train,val_feature, window):
         part2 = train.iloc[val_end+1 : end+1]
 
         train_feature = pd.concat([part1, part2])
-
+        #TODO, drop columns by threshold
         train_feature = train_feature.dropna(how='any')
 
         time_gap = max(30, val_feature.time_sn.max() - val_feature.time_sn.min())
@@ -273,8 +276,8 @@ def get_train_df_by_val(train,val_feature, window):
 
         raise e
     if len(train_feature) == 0:
-        logger.exception(f'Train feature length is none, for val block:{val_begin}:{val_end}')
-        raise Exception(f'Train feature length is none, for val block:{val_begin}:{val_end}')
+        logger.exception(f'Train feature length is none, for val block:{val_begin}:{val_end}, window:{window}')
+        raise Exception(f'Train feature length is none, for val block:{val_begin}:{val_end}, window:{window}')
     return train_feature
 
 
@@ -471,7 +474,7 @@ def get_corr_wtid(col_name):
     return cor
 
 @timed()
-@lru_cache(maxsize=64)
+@lru_cache(maxsize=256)
 def get_train_feature_multi_file(wtid, col, file_num):
     local_args = locals()
     file_num = int(file_num)
@@ -501,6 +504,7 @@ def get_train_feature_multi_file(wtid, col, file_num):
     col_list = [col for col in train.columns if 'var' in col]
     col_list.append('time_sn')
     train = train[col_list]
+    #TODO replace with threshold
     train.iloc[:, 1:] = train.iloc[:,1:].fillna(method='ffill')
 
     if len(train) != input_len:
@@ -510,6 +514,105 @@ def get_train_feature_multi_file(wtid, col, file_num):
     return train.sort_index()
 
 
+@timed()
+def get_train_val(miss_block_id, file_num, window, shift, after):
+    local_args = locals()
+    logger.info(f'input get_train_val:{locals()}')
+    blks = get_blocks()
+    cur_blk = blks.iloc[miss_block_id]
+    blk_id, b1, e1, b2, e2, b3, e3 = get_train_val_range(miss_block_id, window, shift, after)
+    train = get_train_feature_multi_file(cur_blk.wtid, cur_blk.col, file_num)
+
+    val_df = train.loc[b2:e2]
+
+    train_df = get_train_df_by_val(train, val_df, window)
+
+    if train_df is None or  len(train_df) ==0 :
+        logger.error(f'No train is get for :{local_args}')
+        raise Exception(f'No train is get for :{local_args}')
+
+    return train_df ,val_df, blk_id
+
+
+@timed()
+def get_train_val_range(miss_block_id, window, shift, after=True):
+    blks = get_blocks()
+    missing_block = blks.iloc[miss_block_id]
+
+    blk, blk_id = get_closed_block(miss_block_id, window, shift, after)
+
+    missing = int(missing_block.length)
+    shift_adj = int(shift * (window + 1) * missing)
+
+    part_1_b = int(blk.begin + shift_adj)
+    part_1_e = int(part_1_b + np.ceil(window * missing) - 1)
+
+    val_b, val_e = part_1_e + 1, int(part_1_e + missing)
+    part_2_b, part_2_e = val_e + 1, int(val_e + np.ceil(window * missing))
+
+    logger.info(f'range: {part_1_b}:{part_1_e}, {val_b}:{val_e}, {part_2_b}:{part_2_e} for {DefaultMunch(None,blk)}')
+    return blk_id, int(part_1_b), int(part_1_e), int(val_b), int(val_e), int(part_2_b), int(part_2_e)
+
+
+@timed()
+def get_closed_block(miss_block_id, window, shift, after=True):
+    local_args = locals()
+    blks = get_blocks()
+    missing_block = blks.iloc[miss_block_id]
+
+    if missing_block.kind == 'train':
+        raise Exception(f'The input block should be missing:{missing_block}')
+    miss_len = int(missing_block.length)
+    shift = int(shift)
+    window_len = np.ceil((2 * window + 1) * miss_len \
+                         + shift * (window + 1) * miss_len) + 5  # Buffer for round
+
+    bk = get_blocks()
+    max_data_len = bk.loc[(bk.col == missing_block.col)
+                    & (bk.kind == 'train')
+                    & (bk.wtid == missing_block.wtid)].length.max()
+
+    if window_len > max_data_len:
+        logger.warning(f'Expect block have {window_len} length, but max is {max_data_len}, args:{local_args}')
+        window_len = max_data_len
+
+
+    closed = bk.loc[(bk.col == missing_block.col)
+                    & (bk.kind == 'train')
+                    & (bk.wtid == missing_block.wtid)
+                    & (bk.length >= window_len)
+                    ]
+
+
+
+    if after:
+        tmp = closed.loc[closed.begin > missing_block.begin]
+        # Closed After
+        if len(tmp) > 0:
+            return tmp.iloc[0], tmp.index[0]
+    else:
+        # Closed Before
+        tmp = closed.loc[closed.begin < missing_block.begin]
+        if len(tmp) > 0:
+            return tmp.iloc[-1], tmp.index[-1]
+
+    if len(tmp) == 0:
+        if after:
+            tmp = closed.loc[closed.begin < missing_block.begin]
+            if len(tmp) > 0:
+                return tmp.iloc[-1], tmp.index[-1]
+        else:
+            tmp = closed.loc[closed.begin > missing_block.begin]
+            if len(tmp) > 0:
+                return tmp.iloc[0], tmp.index[0]
+    logger.error(f"No closed block {window_len} if found for:{local_args}")
+    raise Exception(f"No closed block {window_len} if found for:{local_args}")
+
+
+def get_bin_id_list(gp_name):
+    file = f'./score/{gp_name}/*'
+    bin_list =  [int(file.split('/')[-1]) for file in sorted(glob(file))]
+    return sorted(bin_list)
 
 if __name__ == '__main__':
 
