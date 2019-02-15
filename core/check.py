@@ -45,7 +45,7 @@ def get_wtid_list_by_bin_id(bin_id, bin_count):
 
 @timed()
 @lru_cache(maxsize=128)
-def get_train_sample_list(bin_id, col, file_num, window, shift=0, after=True):
+def get_train_sample_list(bin_id, col, file_num, window, related_col_count,drop_threshold, shift=0, after=True):
     arg_loc = locals()
 
     # set_list = set_list.split(',')
@@ -65,7 +65,7 @@ def get_train_sample_list(bin_id, col, file_num, window, shift=0, after=True):
                                           & (block_missing.col == col) & (block_missing.kind == 'missing')]
 
         for miss_blk_id, blk in missing_block.iterrows():
-            train_feature, val_feature, index = get_train_val(miss_blk_id,file_num, window, shift, after=True)
+            train_feature, val_feature, index = get_train_val(miss_blk_id,file_num, window, related_col_count,drop_threshold, shift, after=True)
             feature_list.append((train_feature, val_feature, index))
     if len(feature_list) == 0:
         logger.warning(f'Can not find row for:{arg_loc}')
@@ -96,7 +96,8 @@ def check_score(args, shift):
     bin_id = args['bin_id']
     col = args['col_name']
 
-    train_list = get_train_sample_list(bin_id, col, int(args.file_num), round(args.window,1), shift)
+    train_list = get_train_sample_list(bin_id, col, int(args.file_num), round(args.window,1),
+                                       args.related_col_count, args.drop_threshold, shift, )
 
     count, loss = 0, 0
 
@@ -190,6 +191,7 @@ def check_score_all():
 
 
 @lru_cache()
+#@file_cache()
 def estimate_score(top_n, gp_name):
     best_score = pd.DataFrame()
     for col_name in get_predict_col():
@@ -210,7 +212,7 @@ def get_args_dynamic(col_name):
 
     gp_name = check_options().gp_name
     try:
-        tmp = estimate_score(0, gp_name)
+        tmp = estimate_score(0, gp_name) #get_args_dynamic
     except Exception as e:
         logger.warning(e)
         return pd.DataFrame()
@@ -263,15 +265,20 @@ def get_args_dynamic(col_name):
 
 @timed()
 def get_args_mini(col_name, para_name, top_n=3):
-    tmp = merge_score_col(col_name, [1,2,3]) #get_mini_args
+    # tmp = merge_score_col(col_name, [1,2,3]) #get_mini_args
+    #
+    # tmp = tmp.groupby(para_name).agg({'score':['max', 'mean']})
+    # tmp.columns = ['_'.join(items) for items in tmp.columns]
+    # tmp = tmp.sort_values('score_mean', ascending=False)
+    #
+    # args = set(tmp.index.values[:top_n])
 
-    tmp = tmp.groupby(para_name).agg({'score':['max', 'mean']})
-    tmp.columns = ['_'.join(items) for items in tmp.columns]
-    tmp = tmp.sort_values('score_mean', ascending=False)
+    tmp = estimate_score(0, 'base_9')
+    # tmp = tmp.loc[tmp.col_name == col_name].sort_values('score_count', ascending=False).reset_index(drop=True)
 
-    args = set(tmp.index.values[:top_n])
+    tmp = tmp.loc[tmp.col_name == col_name].sort_values('score_count', ascending=False).reset_index(drop=True)
+    return  tmp[para_name].drop_duplicates()[:1].values
 
-    return args
 
 @lru_cache()
 def get_window(col_name):
@@ -282,7 +289,7 @@ def get_window(col_name):
 @lru_cache()
 def get_momenta_col_length(col_name):
     if check_options().mini > 0:
-        return get_args_mini(col_name, 'momenta_col_length', 2)
+        return get_args_mini(col_name, 'momenta_col_length')
 
     is_enum = True if 'int' in date_type[col_name].__name__ else False
     if is_enum:
@@ -317,6 +324,12 @@ def get_file_num(col_name):
         return [1]
     else:
         return range(1,10)
+
+def get_drop_threshold(col_name):
+    return [0.9, 0.95, 0.99]
+
+def get_related_col_count(col_name):
+    return [0, 1, 2]
 
 def check_exising_his(score_file):
     try:
@@ -478,30 +491,32 @@ def get_args_all(col_name):
     momenta_impact_ratio = 0.1
     time_sn = True
     related_col_count = 0
-    drop_threshold = 1
+    #drop_threshold = 1
     class_name = 'lr'
     for window in get_window(col_name):
         window = round(window, 1)
-        for momenta_col_length in get_momenta_col_length(col_name):
-            for momenta_impact_ratio in get_momenta_impact_ratio(col_name):
-                for time_sn in get_time_sn(col_name):
-                    for file_num in get_file_num(col_name):
-                        args = {
-                                'col_name': col_name,
-                                'file_num': file_num,
-                                'window': window,
-                                'momenta_col_length': momenta_col_length,
-                                'momenta_impact_ratio': momenta_impact_ratio,
-                                'related_col_count': related_col_count,
-                                'drop_threshold': drop_threshold,
-                                'time_sn': time_sn,
-                                'class_name': class_name,
-                                }
-                        # args = DefaultMunch(None, args)
-                        # arg_list.append(args)
-                        df = df.append(args,ignore_index=True)
+        for related_col_count in get_related_col_count(col_name):
+            for drop_threshold in get_drop_threshold(col_name):
+                for momenta_col_length in get_momenta_col_length(col_name):
+                    for momenta_impact_ratio in get_momenta_impact_ratio(col_name):
+                        for time_sn in get_time_sn(col_name):
+                            for file_num in get_file_num(col_name):
+                                args = {
+                                        'col_name': col_name,
+                                        'file_num': file_num,
+                                        'window': window,
+                                        'momenta_col_length': momenta_col_length,
+                                        'momenta_impact_ratio': momenta_impact_ratio,
+                                        'related_col_count': related_col_count,
+                                        'drop_threshold': drop_threshold,
+                                        'time_sn': time_sn,
+                                        'class_name': class_name,
+                                        }
+                                # args = DefaultMunch(None, args)
+                                # arg_list.append(args)
+                                df = df.append(args,ignore_index=True)
 
-    return df
+        return df
 
 
 @lru_cache()
@@ -551,7 +566,7 @@ def check_options():
     #parser.add_argument("--bin_id", type=int, default=10)
     parser.add_argument("--check_gap", type=int, default=15, help="Mins to lock the score file")
     parser.add_argument("--gp_name", type=str, default='lr_bin', help="The folder name to save score")
-    parser.add_argument("--shift", type=int, default=0, required=True, help="The folder name to save score")
+    parser.add_argument("--shift", type=float, default=0, required=True, help="The folder name to save score")
 
     parser.add_argument("-D", '--debug', action='store_true', default=False)
     parser.add_argument("-W", '--warning', action='store_true', default=False)
@@ -667,5 +682,5 @@ if __name__ == '__main__':
     check_score_all()
 
     """
-    python ./core/check.py -L  --bin_count 8 --gp_name lr_bin_8  --set_list 0 > check1.log 2>&1 &
+    python ./core/check.py -L  --bin_count 8 --gp_name lr_bin_x  --shift 0 > check1.log 2>&1 &
     """

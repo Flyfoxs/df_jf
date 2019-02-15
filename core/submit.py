@@ -144,7 +144,7 @@ def get_submit_feature_by_block_id(blockid, para ):
     begin, end = cur_block.begin, cur_block.end
 
 
-    submit = get_train_feature_multi_file(wtid, col_name, para.file_num)
+    submit = get_train_feature_multi_file(wtid, col_name, para.file_num, para.related_col_count)
 
 
     val_feature = submit.loc[begin:end]
@@ -152,7 +152,7 @@ def get_submit_feature_by_block_id(blockid, para ):
     logger.debug(f'wtid:{wtid}, col:{col_name}, file_num:{para.file_num},   blockid:{blockid}')
     logger.debug(f'Train columns:{submit.columns}')
 
-    train_feature = get_train_df_by_val(submit, val_feature, para.window) #submit
+    train_feature = get_train_df_by_val(submit, val_feature, para.window, para.drop_threshold) #submit
 
     logger.debug(f'original: {train_feature.shape}, {val_feature.shape}')
     #
@@ -189,7 +189,7 @@ if __name__ == '__main__':
 
 
     """
-    python core/submit.py -L --gp_name lr_bin_9 --version 0214_v2 > sub.log 2>&1 &
+    python core/submit.py -L --gp_name lr_bin_9 --version 0214_v3 > sub.log 2>&1 &
 
     """
 

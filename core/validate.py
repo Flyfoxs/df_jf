@@ -18,7 +18,7 @@ def validate():
 
     avg = round(score_df.score_total.sum()/score_df.score_count.sum(),7)
     score_file = f'./score/val/validate_{avg :.6f}_({score_df.score.mean():.6f})' \
-                 f'_cnt_{check_options().shift}_{check_options().gp_name}.h5'
+                 f'_shift_{check_options().shift}_{check_options().gp_name}.h5'
 
     path = os.path.dirname(score_file)
     os.makedirs(path, exist_ok=True)

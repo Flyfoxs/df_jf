@@ -17,6 +17,7 @@ import json
 
 from glob import glob
 
+closed_ratio = 0.85
 
 def get_predict_col():
     col_list = [col for col in list(date_type.keys()) if 'var' in col]
@@ -235,7 +236,8 @@ def get_missing_block_single(wtid, col, cur_missing):
     return begin, end
 
 
-def get_train_df_by_val(train,val_feature, window):
+def get_train_df_by_val(train,val_feature, window, drop_threshold):
+    #local_args = locals()
     try:
         window_ratio = window
         missing_length = len(val_feature)
@@ -255,7 +257,32 @@ def get_train_df_by_val(train,val_feature, window):
 
         train_feature = pd.concat([part1, part2])
         #TODO, drop columns by threshold
-        train_feature = train_feature.dropna(how='any')
+        #train_feature = train_feature.dropna(how='any')
+
+        for col in train_feature.columns[1:]:
+            valid_count_train = pd.notnull(train_feature[col]).sum()
+            valid_count_val = pd.notnull(val_feature[col]).sum()
+            coverage_train = round(valid_count_train/len(train_feature), 4)
+            coverage_val = round(valid_count_val / len(val_feature), 4)
+            if  coverage_train < drop_threshold or coverage_val < drop_threshold:
+                del train_feature[col]
+                del val_feature[col]
+                logger.info(f'Remove {col}, coverage train/val is:{coverage_train}/{coverage_val} less than {drop_threshold}')
+            else:
+                train_feature[col].fillna(method='ffill', inplace=True)
+                val_feature[col].fillna(method='ffill', inplace=True)
+
+                train_feature[col].fillna(method='bfill', inplace=True)
+                val_feature[col].fillna(method='bfill', inplace=True)
+
+
+        if pd.isna(train_feature.iloc[:,1:]).any().any() :
+            #logger.error(f'Train has none for {local_args}')
+            raise Exception(f'Train {train_feature.shape} has none for {train_feature.index.min()}')
+
+        if pd.isna(val_feature.iloc[:,1:]).any().any():
+            #logger.error(f'Val has none for {local_args}')
+            raise Exception(f'Val {val_feature.shape} has none for {local_args.index.min()}')
 
         time_gap = max(30, val_feature.time_sn.max() - val_feature.time_sn.min())
         time_begin = val_feature.time_sn.min() - 5 * time_gap
@@ -269,11 +296,11 @@ def get_train_df_by_val(train,val_feature, window):
                      f'[{val_feature.index.min()}, {val_feature.index.max()}]({len(val_feature)}), '
                      f'[{part2.index.min()}, {part2.index.max()} ]({len(part2)}), cur_windows:{cur_windows}' )
 
-    except Exception  as e:
-        logger.error(val_feature)
-        logger.exception(e)
-        logger.exception(f'Can not get train for val block:{val_begin}:{val_end}, {args}')
 
+    except Exception  as e:
+        #logger.error(val_feature)
+        logger.exception(e)
+        logger.exception(f'Can not get train for val block:{val_begin}:{val_end}')
         raise e
     if len(train_feature) == 0:
         logger.exception(f'Train feature length is none, for val block:{val_begin}:{val_end}, window:{window}')
@@ -360,8 +387,9 @@ def convert_enum(df):
 #     return sorted(gp_list, key=lambda val: len(val), reverse=True )
 
 
-# @file_cache()
-def get_closed_columns(col_name, wtid=1, threshold=0.9):
+@timed()
+@lru_cache(maxsize=9999999)
+def get_closed_columns(col_name, wtid=1, threshold=closed_ratio):
     sub = get_train_ex(wtid)
 
     sub = sub.dropna(how='any')
@@ -433,21 +461,26 @@ def get_pure_block_list(kind='data'):
 #     return block.loc[block.wtid.isin(wtid_list)]
 
 
-def rename_col_for_merge_across_wtid(wtid, col_name, key=None):
-    if key is None:
-        key = wtid
-    train = get_train_ex(wtid)[[col_name, 'time_sn', 'time_slot_7']]
-    train.columns = [f'{col}_{key}' if 'var' in col else col for col in train.columns]
+def rename_col_for_merge_across_wtid(wtid, col_name, related_col_count):
+    col_list = [col_name, 'time_sn', 'time_slot_7']
+    if related_col_count > 0:
+        closed_col = get_closed_columns(col_name, wtid, closed_ratio) #rename_col_for_merge_across_wtid
+        if len(closed_col) >1:
+            closed_col = closed_col[1:related_col_count+1]
+            col_list.extend(closed_col)
+
+    train = get_train_ex(wtid)[col_list]
+    train.columns = [f'{col}_{wtid}' if 'var' in col else col for col in train.columns]
     return train
 
 
 @lru_cache()
 @file_cache()
 def get_corr_wtid(col_name):
-    train = rename_col_for_merge_across_wtid(1, col_name)
+    train = rename_col_for_merge_across_wtid(1, col_name, 0) #get_corr_wtid
 
     for wtid in range(2, 34):
-        train_tmp = rename_col_for_merge_across_wtid(wtid, col_name)
+        train_tmp = rename_col_for_merge_across_wtid(wtid, col_name, 0) #get_corr_wtid
         train = train.merge(train_tmp, on=['time_slot_7'])
         train = train.drop_duplicates('time_slot_7')
         logger.debug(f'col#{col_name}, the shpae after wtid:{wtid} is:{train.shape}')
@@ -475,7 +508,7 @@ def get_corr_wtid(col_name):
 
 @timed()
 @lru_cache(maxsize=256)
-def get_train_feature_multi_file(wtid, col, file_num):
+def get_train_feature_multi_file(wtid, col, file_num, related_col_count):
     local_args = locals()
     file_num = int(file_num)
     if file_num <1:
@@ -488,15 +521,17 @@ def get_train_feature_multi_file(wtid, col, file_num):
     related_wtid_list = [int(col.split('_')[1]) for col in related_wtid_list.index]
 
     #Find data for original Wtid
-    train = rename_col_for_merge_across_wtid(wtid, col)
+    train = rename_col_for_merge_across_wtid(wtid, col, related_col_count) #get_train_feature_multi_file
 
     input_len = len(train)
+    #Rename back
     train = train.rename(columns={f'{col}_{wtid}':col})
     train['id']=train.index
 
     #Join the feature from other wtid
     for related_wtid in related_wtid_list:
-        train_tmp = rename_col_for_merge_across_wtid(related_wtid, col)
+        #TODO
+        train_tmp = rename_col_for_merge_across_wtid(related_wtid, col, 0) #get_train_feature_multi_file
         train_tmp = train_tmp.drop(axis='column', columns=['time_sn'])
         train = train.merge(train_tmp, how='left', on=['time_slot_7'])
         train = train.drop_duplicates(['id'])
@@ -505,7 +540,7 @@ def get_train_feature_multi_file(wtid, col, file_num):
     col_list.append('time_sn')
     train = train[col_list]
     #TODO replace with threshold
-    train.iloc[:, 1:] = train.iloc[:,1:].fillna(method='ffill')
+    #train.iloc[:, 1:] = train.iloc[:,1:].fillna(method='ffill')
 
     if len(train) != input_len:
         logger.exception(f"There are some row are missing for wtid:{wtid}, col:{col}, file_num:{file_num}")
@@ -515,17 +550,23 @@ def get_train_feature_multi_file(wtid, col, file_num):
 
 
 @timed()
-def get_train_val(miss_block_id, file_num, window, shift, after):
+def get_train_val(miss_block_id, file_num, window, related_col_count,drop_threshold, shift, after):
     local_args = locals()
     logger.info(f'input get_train_val:{locals()}')
     blks = get_blocks()
     cur_blk = blks.iloc[miss_block_id]
     blk_id, b1, e1, b2, e2, b3, e3 = get_train_val_range(miss_block_id, window, shift, after)
-    train = get_train_feature_multi_file(cur_blk.wtid, cur_blk.col, file_num)
+    train = get_train_feature_multi_file(cur_blk.wtid, cur_blk.col, file_num, related_col_count)
+
 
     val_df = train.loc[b2:e2]
+    train_df = get_train_df_by_val(train, val_df, window, drop_threshold)
 
-    train_df = get_train_df_by_val(train, val_df, window)
+    remove_list, keep_list = get_col_need_remove(miss_block_id)
+    if len(remove_list) > 0:
+        val_df.drop(axis='column', columns=remove_list, errors='ignore')
+        train_df.drop(axis='column', columns=remove_list, errors='ignore')
+        logger.info(f'Remove col:{remove_list}, keep:{keep_list} for blk_id:{miss_block_id}')
 
     if train_df is None or  len(train_df) ==0 :
         logger.error(f'No train is get for :{local_args}')
@@ -563,7 +604,6 @@ def get_closed_block(miss_block_id, window, shift, after=True):
     if missing_block.kind == 'train':
         raise Exception(f'The input block should be missing:{missing_block}')
     miss_len = int(missing_block.length)
-    shift = int(shift)
     window_len = np.ceil((2 * window + 1) * miss_len \
                          + shift * (window + 1) * miss_len) + 5  # Buffer for round
 
@@ -614,22 +654,78 @@ def get_bin_id_list(gp_name):
     bin_list =  [int(file.split('/')[-1]) for file in sorted(glob(file))]
     return sorted(bin_list)
 
+@file_cache()
+def get_closed_col_ratio_df():
+    blk_list = get_blocks()
+    blk_list = blk_list.loc[blk_list.kind=='missing']#[:200]
+    blk_list
+    df = pd.DataFrame()
+    for blk_id, blk in blk_list.iterrows():
+        col_list  = get_closed_columns(blk.col, wtid=1, threshold=closed_ratio) #get_closed_col_ratio_df
+        tmp_blk = blk_list[(blk_list.wtid==blk.wtid)  &
+                     (blk_list.kind=='missing')&
+                     (blk_list.col.isin(col_list) ) &
+                      (blk_list.begin == blk.begin) & (blk_list.end == blk.end)]
+
+        #print(len(tmp_blk),len(col_list) )
+
+        if len(tmp_blk) == len(col_list):
+            continue
+
+        train= get_train_ex(blk.wtid)
+
+        tmp = train.loc[blk.begin:blk.end, col_list]
+        sr_map = {}
+        sr_map['blk_id']=blk_id
+        sr_map['col_name']=blk.col
+        sr_map['wtid'] = blk.wtid
+        sr_map['begin'] = blk.begin
+        sr_map['end'] = blk.end
+        sr_map['length'] = blk.length
+        for sn, col in enumerate(col_list):
+            ratio =  pd.notna(tmp[col]).sum() /len(tmp)
+            sr_map[f'name_{sn}']=col
+            sr_map[f'val_{sn}']= ratio
+        df = df.append(sr_map,ignore_index=True)
+        #print(df.shape, df.val_2.sum())
+    return df
+
+
+@timed()
+def get_col_need_remove(blk_id, closed_ratio=closed_ratio):
+    """
+    Check if introduce the related column, how many NONE col need to remove
+    :param blk_id:
+    :param closed_ratio:
+    :return:
+    """
+    bk = get_blocks()
+
+    miss = get_closed_col_ratio_df()
+    miss = miss.set_index('blk_id')
+    cur_name = bk.ix[blk_id, 'col']
+
+    closed_col = get_closed_columns(cur_name, wtid=1, threshold=closed_ratio)
+    closed_col = list(closed_col)
+    closed_col.remove(cur_name)
+
+    keep_list = []
+    if blk_id not in miss.index:
+        return closed_col, keep_list
+
+
+    for i in range(1, 6):
+        threshold = float(miss.ix[blk_id, f'val_{i}'])
+        if threshold > 0:
+            col_name = miss.ix[blk_id, f'name_{i}']
+            # The column will keep
+            closed_col.remove(col_name)
+            keep_list.append(col_name)
+    return closed_col, keep_list
+
+
 if __name__ == '__main__':
-
-    # columns = list(date_type.keys())
-    # columns.remove('wtid')
-    # columns = sorted(columns)
-    # for wtid in sorted(range(1, 34), reverse=True):
-    #     for col in columns:
-    #         get_result(wtid, col, 100)
-
-
-    tmp = get_std_all()
-    tmp = tmp.groupby(['col', 'data_type']).agg({'mean': 'mean'}).sort_values(('mean'), ascending=False)
-    tmp = tmp.reset_index()
-
-    for col_name in tmp.col:
-        get_corr_wtid(col_name)
+    get_closed_col_ratio_df()
 
 
 
