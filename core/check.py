@@ -97,7 +97,7 @@ def check_score(args, shift):
     col = args['col_name']
 
     train_list = get_train_sample_list(bin_id, col, int(args.file_num), round(args.window,1),
-                                       args.related_col_count, args.drop_threshold, shift, )
+                                       int(args.related_col_count), args.drop_threshold, shift, )
 
     count, loss = 0, 0
 
@@ -158,7 +158,9 @@ def summary_all_best_score(wtid_list=[-1], top_n=0, **kwargs):
     df = pd.DataFrame()
     for col in get_predict_col():
         gp_name = check_options().gp_name
-        df = df.append(get_best_para(gp_name, col, wtid_list, top_n, **kwargs), ignore_index=True) # summary_all_best_score
+        score = get_best_para(gp_name, col, wtid_list, top_n, **kwargs)
+        if len(score) > 0:
+            df = df.append(score, ignore_index=True) # summary_all_best_score
 
     df['data_type'] = df.col_name.apply(lambda val: date_type[val].__name__)
 
@@ -200,7 +202,8 @@ def estimate_score(top_n, gp_name):
         for file in sorted(glob(file)):
             bin_id = int(file.split('/')[-1])
             para = get_best_para(gp_name, col_name, bin_id, top_n=top_n) #estimate_score
-            best_score = best_score.append(para, ignore_index=True)
+            if len(para) > 0:
+                best_score = best_score.append(para, ignore_index=True)
     return best_score
 
 
@@ -646,7 +649,15 @@ def merge_score_col(col_name, wtid_list):
 @lru_cache()
 def get_best_para(gp_name, col_name, bin_id, top_n=0, **kwargs):
     score_file = f'./score/{gp_name}/{bin_id:02}/{col_name}.h5'
-    tmp = pd.read_hdf(score_file, 'score')  # get_best_score
+    try:
+        tmp = pd.read_hdf(score_file, 'score')  # get_best_score
+    except KeyError:
+        logger.warning(f'Score is not found on file:{score_file}')
+        return pd.Series()
+    except FileNotFoundError:
+        logger.warning(f'File is not found for:{score_file}')
+        return pd.Series()
+
     tmp = tmp.loc[tmp.bin_id==bin_id]
     for k, v in kwargs.items():
         tmp_check = tmp.loc[tmp[k]<=v]

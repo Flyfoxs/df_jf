@@ -509,6 +509,7 @@ def get_corr_wtid(col_name):
 @timed()
 @lru_cache(maxsize=256)
 def get_train_feature_multi_file(wtid, col, file_num, related_col_count):
+    related_col_count = int(related_col_count)
     local_args = locals()
     file_num = int(file_num)
     if file_num <1:

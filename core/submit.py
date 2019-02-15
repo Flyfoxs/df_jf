@@ -144,7 +144,7 @@ def get_submit_feature_by_block_id(blockid, para ):
     begin, end = cur_block.begin, cur_block.end
 
 
-    submit = get_train_feature_multi_file(wtid, col_name, para.file_num, para.related_col_count)
+    submit = get_train_feature_multi_file(wtid, col_name, int(para.file_num), int(para.related_col_count))
 
 
     val_feature = submit.loc[begin:end]
