@@ -236,11 +236,13 @@ def get_missing_block_single(wtid, col, cur_missing):
     return begin, end
 
 
-def get_train_df_by_val(train,val_feature, window, drop_threshold):
+def get_train_df_by_val(miss_block_id, train,val_feature, window, drop_threshold, enable_time):
     #local_args = locals()
     try:
         window_ratio = window
         missing_length = len(val_feature)
+        bk = get_blocks()
+        col_name = bk.ix[miss_block_id,'col']
 
         cur_windows = max(3, missing_length * window_ratio)
         cur_windows = int(cur_windows)
@@ -256,19 +258,33 @@ def get_train_df_by_val(train,val_feature, window, drop_threshold):
         part2 = train.loc[val_end+1 : end]
 
         train_feature = pd.concat([part1, part2])
-        #TODO, drop columns by threshold
-        #train_feature = train_feature.dropna(how='any')
 
-        for col in reversed(train_feature.columns[1:]):
+        #Drop the related col to estimate the miss_blk_id, since the real data is missing
+        remove_list, keep_list = get_col_need_remove(miss_block_id)
+        if len(remove_list) > 0:
+            val_feature.drop(axis='column', columns=remove_list, errors='ignore')
+            train_feature.drop(axis='column', columns=remove_list, errors='ignore')
+            logger.info(f'Remove col:{remove_list}, keep:{keep_list} to estimate blk_id:{miss_block_id}')
+
+        #Drop by threshold
+        col_list = train_feature.columns[1:]
+        col_list = sorted(col_list, key = lambda col: pd.notnull(train_feature[col]).sum(), reverse=False )
+        for col in col_list:
             valid_count_train = pd.notnull(train_feature[col]).sum().sum()
             valid_count_val = pd.notnull(val_feature[col]).sum().sum()
             coverage_train = round(valid_count_train/len(train_feature), 4)
             coverage_val = round(valid_count_val / len(val_feature), 4)
 
-            if train_feature.shape[1] >= 3 and coverage_train < drop_threshold or coverage_val < drop_threshold:
+            col_list = list(train_feature.columns)
+            if not enable_time and 'time_sn' in col_list:
+                print(enable_time)
+                col_list.remove('time_sn')
+            print(col_list)
+            if pd.isna(train_feature[col]).all() or pd.isna(val_feature[col]).all() or \
+                    (len(col_list) >= 3 and (coverage_train < drop_threshold or coverage_val < drop_threshold)):
                 del train_feature[col]
                 del val_feature[col]
-                logger.info(f'Remove {col}, coverage train/val is:{coverage_train}/{coverage_val} less than {drop_threshold}')
+                logger.info(f'Remove {col} from {col_list}, coverage train/val is:{coverage_train}/{coverage_val} less than {drop_threshold}')
             else:
                 train_feature[col].fillna(method='ffill', inplace=True)
                 val_feature[col].fillna(method='ffill', inplace=True)
@@ -276,6 +292,7 @@ def get_train_df_by_val(train,val_feature, window, drop_threshold):
                 train_feature[col].fillna(method='bfill', inplace=True)
                 val_feature[col].fillna(method='bfill', inplace=True)
 
+        print(train_feature.columns, train_feature.shape[1])
         if pd.isna(train_feature.iloc[:, 0]).any() or pd.isna(val_feature.iloc[:, 0]).any():
             logger.error(train_feature.columns)
             logger.error(train_feature.iloc[:, 0].head())
@@ -284,11 +301,13 @@ def get_train_df_by_val(train,val_feature, window, drop_threshold):
 
         if pd.isna(train_feature.iloc[:,1:]).any().any() :
             #logger.error(f'Train has none for {local_args}')
+            logger.error(f'\n{train_feature.head(3)}')
             raise Exception(f'Train {train_feature.shape} has none for {train_feature.index.min()}')
 
         if pd.isna(val_feature.iloc[:,1:]).any().any():
             #logger.error(f'Val has none for {local_args}')
-            raise Exception(f'Val {val_feature.shape} has none for {local_args.index.min()}')
+            logger.error(f'\n{val_feature.head(3)}')
+            raise Exception(f'Val {val_feature.shape} has none for {val_feature.index.min()}')
 
         time_gap = max(30, val_feature.time_sn.max() - val_feature.time_sn.min())
         time_begin = val_feature.time_sn.min() - 5 * time_gap
@@ -302,6 +321,10 @@ def get_train_df_by_val(train,val_feature, window, drop_threshold):
                      f'[{val_feature.index.min()}, {val_feature.index.max()}]({len(val_feature)}), '
                      f'[{part2.index.min()}, {part2.index.max()} ]({len(part2)}), cur_windows:{cur_windows}' )
 
+        if not enable_time and train_feature.shape[1] >= 3 and 'time_sn' in train_feature.columns:
+            logger.info(f'Remove the time_sn for {miss_block_id}, enable_time:{enable_time}')
+            del train_feature['time_sn']
+            del val_feature['time_sn']
 
     except Exception  as e:
         #logger.error(val_feature)
@@ -312,6 +335,7 @@ def get_train_df_by_val(train,val_feature, window, drop_threshold):
         logger.exception(f'Train feature length is none, for val block:{val_begin}:{val_end}, window:{window}')
         raise Exception(f'Train feature length is none, for val block:{val_begin}:{val_end}, window:{window}')
     return train_feature
+
 
 
 
@@ -558,29 +582,36 @@ def get_train_feature_multi_file(wtid, col, file_num, related_col_count):
 
 @timed()
 def get_train_val(miss_block_id, file_num, window,
-                  related_col_count, drop_threshold, shift, after ):
+                  related_col_count, drop_threshold, enable_time,
+                  shift, after ):
     local_args = locals()
     logger.info(f'input get_train_val:{locals()}')
     blks = get_blocks()
     cur_blk = blks.iloc[miss_block_id]
-    blk_id, b1, e1, b2, e2, b3, e3 = get_train_val_range(miss_block_id, window, shift, after)
+    data_blk_id, b1, e1, b2, e2, b3, e3 = get_train_val_range(miss_block_id, window, shift, after)
     train = get_train_feature_multi_file(cur_blk.wtid, cur_blk.col, file_num, related_col_count)
 
 
     val_df = train.loc[b2:e2]
-    train_df = get_train_df_by_val(train.loc[b1:e3], val_df, window, drop_threshold)
+    #Drop feature by drop_threshold
+    train_df = get_train_df_by_val(miss_block_id, train.loc[b1:e3], val_df, window, drop_threshold, enable_time)
 
-    remove_list, keep_list = get_col_need_remove(miss_block_id)
-    if len(remove_list) > 0:
-        val_df.drop(axis='column', columns=remove_list, errors='ignore')
-        train_df.drop(axis='column', columns=remove_list, errors='ignore')
-        logger.info(f'Remove col:{remove_list}, keep:{keep_list} for blk_id:{miss_block_id}')
+
 
     if train_df is None or  len(train_df) ==0 :
         logger.error(f'No train is get for :{local_args}')
         raise Exception(f'No train is get for :{local_args}')
 
-    return train_df ,val_df, blk_id
+    if train_df.shape[1]<=1 or val_df.shape[1]<=1:
+        logger.error(f'Train df {train_df.shape} only have col:{train_df.columns}, miss_blk:{miss_block_id}')
+        raise Exception(f'Train df {train_df.shape} only have col:{train_df.columns}, miss_blk:{miss_block_id}')
+
+    count_none = pd.isna(train_df).sum().sum()
+    if count_none > 0:
+        logger.error(f'There are {count_none} none for train_df, miss_blk:{miss_block_id}.')
+        raise Exception(f'There are {count_none} none for train_df, miss_blk:{miss_block_id}.')
+
+    return train_df ,val_df, data_blk_id
 
 
 @timed()
@@ -588,7 +619,7 @@ def get_train_val_range(miss_block_id, window, shift, after=True):
     blks = get_blocks()
     missing_block = blks.iloc[miss_block_id]
 
-    blk, blk_id = get_closed_block(miss_block_id, window, shift, after)
+    blk, data_blk_id = get_closed_block(miss_block_id, window, shift, after)
 
     missing = int(missing_block.length)
     shift_adj = int(shift * (window + 1) * missing)
@@ -600,7 +631,7 @@ def get_train_val_range(miss_block_id, window, shift, after=True):
     part_2_b, part_2_e = val_e + 1, int(val_e + np.ceil(window * missing))
 
     logger.info(f'range: {part_1_b}:{part_1_e}, {val_b}:{val_e}, {part_2_b}:{part_2_e} for {DefaultMunch(None,blk)}')
-    return blk_id, int(part_1_b), int(part_1_e), int(val_b), int(val_e), int(part_2_b), int(part_2_e)
+    return data_blk_id, int(part_1_b), int(part_1_e), int(val_b), int(val_e), int(part_2_b), int(part_2_e)
 
 
 @timed()
@@ -645,6 +676,7 @@ def get_closed_block(miss_block_id, window, shift, after=True):
             return tmp.iloc[-1], tmp.index[-1]
 
     if len(tmp) == 0:
+        logger.warning(f'No direct block is found for:{miss_block_id}, after:{after}, will reverse')
         if after:
             tmp = closed.loc[closed.begin < missing_block.begin]
             if len(tmp) > 0:

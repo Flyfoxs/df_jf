@@ -76,9 +76,6 @@ def get_cut_predict(train, val, args):
     clf = LinearRegression()
     np.random.seed(0)
 
-    if not enable_time and int(args.file_num) > 1:
-        val   =   val.drop(axis='column', columns=['time_sn'])
-        train = train.drop(axis='column', columns=['time_sn'])
 
 
     try:
@@ -87,7 +84,7 @@ def get_cut_predict(train, val, args):
         logger.error(f'train:{train.shape}, val:{val.shape}:[{val.index.min()}, {val.index.max()}] '
                      f'{train.columns} ({args.time_sn})')
         logger.error(args)
-        logger.error(train.head())
+        logger.error(f'{train.shape}, \n{train.head()}')
         raise e
 
     cut_len = max(min(momenta_impact_length, len(val)//2-1),1)

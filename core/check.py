@@ -45,7 +45,9 @@ def get_wtid_list_by_bin_id(bin_id, bin_count):
 
 @timed()
 @lru_cache(maxsize=128)
-def get_train_sample_list(bin_id, col, file_num, window, related_col_count,drop_threshold, shift=0, after=True):
+def get_train_sample_list(bin_id, col, file_num, window,
+                          related_col_count,drop_threshold,enable_time,
+                          shift=0, after=True):
     arg_loc = locals()
 
     # set_list = set_list.split(',')
@@ -65,8 +67,10 @@ def get_train_sample_list(bin_id, col, file_num, window, related_col_count,drop_
                                           & (block_missing.col == col) & (block_missing.kind == 'missing')]
 
         for miss_blk_id, blk in missing_block.iterrows():
-            train_feature, val_feature, index = get_train_val(miss_blk_id,file_num, window, related_col_count,drop_threshold, shift, after=True)
-            feature_list.append((train_feature, val_feature, index))
+            train_feature, val_feature, index = get_train_val(miss_blk_id,file_num, window,
+                                                              related_col_count,drop_threshold,enable_time,
+                                                              shift, after=True)
+            feature_list.append((train_feature, val_feature, miss_blk_id))
     if len(feature_list) == 0:
         logger.warning(f'Can not find row for:{arg_loc}')
 
@@ -96,8 +100,11 @@ def check_score(args, shift):
     bin_id = args['bin_id']
     col = args['col_name']
 
+    enable_time = True if args.time_sn > 0 else False
+
     train_list = get_train_sample_list(bin_id, col, int(args.file_num), round(args.window,1),
-                                       int(args.related_col_count), args.drop_threshold, shift, )
+                                       int(args.related_col_count), args.drop_threshold, enable_time,
+                                       shift, )
 
     count, loss = 0, 0
 
@@ -122,8 +129,12 @@ def check_score(args, shift):
         #     x = np.linspace(train.time_sn.min(), train.time_sn.max(), 10000)
         #     plt.plot(x, check_fn(x))
         #     plt.show()
+        try:
+            val_res = check_fn(val.iloc[:, 1:])
+        except Exception as e:
+            logger.error(f'Process blockid#{blockid} incorrect, val:{val.columns}')
+            raise e
 
-        val_res = check_fn(val.iloc[:, 1:])
         #logger.debug(f'shape of predict output {val_res.shape}, with paras:{local_args}')
         cur_count, cur_loss = score(val[col], val_res, is_enum)
 
@@ -219,6 +230,9 @@ def get_args_dynamic(col_name):
     except Exception as e:
         logger.warning(e)
         return pd.DataFrame()
+
+    if tmp is None or len(tmp) == 0:
+        return pd.DataFrame()
     tmp = tmp.loc[(tmp.col_name == col_name)][model_paras].drop_duplicates()
 
     dynamic_args = pd.DataFrame()
@@ -280,7 +294,7 @@ def get_args_mini(col_name, para_name, top_n=3):
     # tmp = tmp.loc[tmp.col_name == col_name].sort_values('score_count', ascending=False).reset_index(drop=True)
 
     tmp = tmp.loc[tmp.col_name == col_name].sort_values('score_count', ascending=False).reset_index(drop=True)
-    return  tmp[para_name].drop_duplicates()[:1].values
+    return  tmp[para_name].drop_duplicates()[:2].values
 
 
 @lru_cache()
@@ -329,7 +343,7 @@ def get_file_num(col_name):
         return range(1,10)
 
 def get_drop_threshold(col_name):
-    return [0.9, 0.95, 0.99]
+    return [0.9, 0.95]
 
 def get_related_col_count(col_name):
     return [0, 1, 2]
@@ -693,5 +707,5 @@ if __name__ == '__main__':
     check_score_all()
 
     """
-    python ./core/check.py -L  --bin_count 8 --gp_name lr_bin_x  --shift 0 > check1.log 2>&1 &
+    python ./core/check.py -L  --bin_count 9 --gp_name lr_bin_9  --shift 0 > check1.log 2>&1 &
     """

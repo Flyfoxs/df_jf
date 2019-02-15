@@ -26,6 +26,8 @@ def predict_wtid(wtid):
             logger.debug(f'===Predict wtid:{wtid:2}, bin_id:{bin_id} ,{col_name},blockid:{blockid:6}, best_file_num:{para.file_num}, type:{missing_block.data_type}')
             train, sub = get_submit_feature_by_block_id(blockid, para)
 
+            #for trouble shooting:
+            para.blk_id = blockid
             predict_fn = get_predict_fun(train, para)
             predict_res = predict_fn(sub.iloc[:, 1:])
             logger.debug(f'sub={sub.shape}, predict_res={predict_res.shape}, type={type(predict_res)}')
@@ -152,7 +154,8 @@ def get_submit_feature_by_block_id(blockid, para ):
     logger.debug(f'wtid:{wtid}, col:{col_name}, file_num:{para.file_num},   blockid:{blockid}')
     logger.debug(f'Train columns:{submit.columns}')
 
-    train_feature = get_train_df_by_val(submit, val_feature, para.window, para.drop_threshold) #submit
+    enable_time = True if para.time_sn > 0 else False
+    train_feature = get_train_df_by_val(blockid, submit, val_feature, para.window, para.drop_threshold, enable_time) #submit
 
     logger.debug(f'original: {train_feature.shape}, {val_feature.shape}')
     #
