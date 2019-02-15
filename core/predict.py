@@ -80,9 +80,15 @@ def get_cut_predict(train, val, args):
         val   =   val.drop(axis='column', columns=['time_sn'])
         train = train.drop(axis='column', columns=['time_sn'])
 
-    logger.debug(f'train:{train.shape}, val:{val.shape}:[{val.index.min()}, {val.index.max()}] '
-                 f'{train.columns} ({args.time_sn})')
-    clf.fit(train.iloc[:, 1:], train.iloc[:, 0])
+
+    try:
+        clf.fit(train.iloc[:, 1:], train.iloc[:, 0])
+    except Exception as e:
+        logger.error(f'train:{train.shape}, val:{val.shape}:[{val.index.min()}, {val.index.max()}] '
+                     f'{train.columns} ({args.time_sn})')
+        logger.error(args)
+        logger.error(train.head())
+        raise e
 
     cut_len = max(min(momenta_impact_length, len(val)//2-1),1)
 

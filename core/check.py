@@ -110,7 +110,7 @@ def check_score(args, shift):
         max_len = max(max_len, len(val))
 
         is_enum = True if 'int' in date_type[col].__name__ else False
-        logger.info(f'====={type(train)}, {type(val)}, {blockid}')
+        logger.debug(f'====={type(train)}, {type(val)}, {blockid}')
         logger.debug(f'Blockid#{blockid}, train:{train.shape}, val:{val.shape}, file_num:{args.file_num}')
         check_fn = get_predict_fun(train, args)
 

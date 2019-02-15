@@ -245,26 +245,27 @@ def get_train_df_by_val(train,val_feature, window, drop_threshold):
         cur_windows = max(3, missing_length * window_ratio)
         cur_windows = int(cur_windows)
 
-        val_begin = val_feature.index.min()
-        val_end = val_feature.index.max()
+        val_begin = int(val_feature.index.min().item())
+        val_end = int(val_feature.index.max().item())
 
-        begin = max(val_begin - cur_windows, 0)
-        end = val_end + cur_windows
+        begin = max(val_begin - round(cur_windows), 0)
+        end = int(val_end + np.ceil(cur_windows))
         logger.debug(f'part#1:{begin},{val_begin}')
         logger.debug(f'part#2:{val_end+1},{end+1}')
-        part1 = train.iloc[begin : val_begin]
-        part2 = train.iloc[val_end+1 : end+1]
+        part1 = train.loc[begin : val_begin-1]
+        part2 = train.loc[val_end+1 : end]
 
         train_feature = pd.concat([part1, part2])
         #TODO, drop columns by threshold
         #train_feature = train_feature.dropna(how='any')
 
-        for col in train_feature.columns[1:]:
-            valid_count_train = pd.notnull(train_feature[col]).sum()
-            valid_count_val = pd.notnull(val_feature[col]).sum()
+        for col in reversed(train_feature.columns[1:]):
+            valid_count_train = pd.notnull(train_feature[col]).sum().sum()
+            valid_count_val = pd.notnull(val_feature[col]).sum().sum()
             coverage_train = round(valid_count_train/len(train_feature), 4)
             coverage_val = round(valid_count_val / len(val_feature), 4)
-            if  coverage_train < drop_threshold or coverage_val < drop_threshold:
+
+            if train_feature.shape[1] >= 3 and coverage_train < drop_threshold or coverage_val < drop_threshold:
                 del train_feature[col]
                 del val_feature[col]
                 logger.info(f'Remove {col}, coverage train/val is:{coverage_train}/{coverage_val} less than {drop_threshold}')
@@ -275,6 +276,11 @@ def get_train_df_by_val(train,val_feature, window, drop_threshold):
                 train_feature[col].fillna(method='bfill', inplace=True)
                 val_feature[col].fillna(method='bfill', inplace=True)
 
+        if pd.isna(train_feature.iloc[:, 0]).any() or pd.isna(val_feature.iloc[:, 0]).any():
+            logger.error(train_feature.columns)
+            logger.error(train_feature.iloc[:, 0].head())
+            logger.error(val_feature.iloc[:, 0].head())
+            raise Exception(f'Train/val LABEL has None, for {train_feature.index.min()}')
 
         if pd.isna(train_feature.iloc[:,1:]).any().any() :
             #logger.error(f'Train has none for {local_args}')
@@ -551,7 +557,8 @@ def get_train_feature_multi_file(wtid, col, file_num, related_col_count):
 
 
 @timed()
-def get_train_val(miss_block_id, file_num, window, related_col_count,drop_threshold, shift, after):
+def get_train_val(miss_block_id, file_num, window,
+                  related_col_count, drop_threshold, shift, after ):
     local_args = locals()
     logger.info(f'input get_train_val:{locals()}')
     blks = get_blocks()
@@ -561,7 +568,7 @@ def get_train_val(miss_block_id, file_num, window, related_col_count,drop_thresh
 
 
     val_df = train.loc[b2:e2]
-    train_df = get_train_df_by_val(train, val_df, window, drop_threshold)
+    train_df = get_train_df_by_val(train.loc[b1:e3], val_df, window, drop_threshold)
 
     remove_list, keep_list = get_col_need_remove(miss_block_id)
     if len(remove_list) > 0:
