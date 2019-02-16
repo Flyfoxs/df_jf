@@ -192,7 +192,7 @@ def check_score_all():
 
     bin_count = check_options().bin_count
     import itertools
-    bin_col_list = itertools.product(range(0, bin_count), get_predict_col(), )
+    bin_col_list = itertools.product(get_predict_col(), range(0, bin_count))
     #bin_col_list = [(5,'var029')]
 
     try:
@@ -294,7 +294,7 @@ def get_args_mini(col_name, para_name, top_n=3):
     # tmp = tmp.loc[tmp.col_name == col_name].sort_values('score_count', ascending=False).reset_index(drop=True)
 
     tmp = tmp.loc[tmp.col_name == col_name].sort_values('score_count', ascending=False).reset_index(drop=True)
-    return  tmp[para_name].drop_duplicates()[:2].values
+    return  tmp[para_name].drop_duplicates()[:1].values
 
 
 @lru_cache()
@@ -421,7 +421,7 @@ def heart_beart(score_file, msg):
 def check_score_column(bin_col):
     try:
         with factory.create_lock(str(bin_col)):
-            bin_id , col_name = bin_col
+            col_name, bin_id  = bin_col
 
             gp_name = check_options().gp_name
             score_file = f'./score/{gp_name}/{bin_id:02}/{col_name}.h5'

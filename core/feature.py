@@ -236,8 +236,9 @@ def get_missing_block_single(wtid, col, cur_missing):
     return begin, end
 
 
-def get_train_df_by_val(miss_block_id, train,val_feature, window, drop_threshold, enable_time):
+def get_train_df_by_val(miss_block_id, train,val_feature, window, drop_threshold, enable_time, file_num):
     #local_args = locals()
+    file_num = int(file_num)
     try:
         window_ratio = window
         missing_length = len(val_feature)
@@ -277,9 +278,9 @@ def get_train_df_by_val(miss_block_id, train,val_feature, window, drop_threshold
 
             col_list = list(train_feature.columns)
             if not enable_time and 'time_sn' in col_list:
-                print(enable_time)
+                #print(enable_time)
                 col_list.remove('time_sn')
-            print(col_list)
+            #print(col_list)
             if pd.isna(train_feature[col]).all() or pd.isna(val_feature[col]).all() or \
                     (len(col_list) >= 3 and (coverage_train < drop_threshold or coverage_val < drop_threshold)):
                 del train_feature[col]
@@ -292,7 +293,9 @@ def get_train_df_by_val(miss_block_id, train,val_feature, window, drop_threshold
                 train_feature[col].fillna(method='bfill', inplace=True)
                 val_feature[col].fillna(method='bfill', inplace=True)
 
-        print(train_feature.columns, train_feature.shape[1])
+        train_feature, val_feature = remove_col_from_redundant_file(train_feature, val_feature, file_num)
+
+        #print(train_feature.columns, train_feature.shape[1])
         if pd.isna(train_feature.iloc[:, 0]).any() or pd.isna(val_feature.iloc[:, 0]).any():
             logger.error(train_feature.columns)
             logger.error(train_feature.iloc[:, 0].head())
@@ -337,6 +340,18 @@ def get_train_df_by_val(miss_block_id, train,val_feature, window, drop_threshold
     return train_feature
 
 
+def remove_col_from_redundant_file(train, val, file_num):
+    if file_num == 1:
+        return train, val
+    elif file_num==0:
+        raise Exception('File num should be large than 0')
+    else:
+        base_col = str(train.columns[0])
+        col_list = [item for item in train.columns if base_col in item]
+        drop_list = col_list[file_num:]
+        train.drop(axis='column', columns=drop_list, inplace=True)
+        val.drop(axis='column', columns=drop_list, inplace=True)
+        return train, val
 
 
 @lru_cache()
@@ -419,7 +434,7 @@ def convert_enum(df):
 
 @timed()
 @lru_cache(maxsize=9999999)
-def get_closed_columns(col_name, wtid=1, threshold=closed_ratio):
+def get_closed_columns(col_name, wtid=1, threshold=closed_ratio, remove_self=False):
     sub = get_train_ex(wtid)
 
     sub = sub.dropna(how='any')
@@ -431,8 +446,13 @@ def get_closed_columns(col_name, wtid=1, threshold=closed_ratio):
     #print(cor.shape, sub.shape)
 
     cor = pd.DataFrame(index=col_list, columns=col_list, data=cor)[col_name]
+    col_list = cor.loc[cor >= threshold].sort_values(ascending=False).index
+    col_list = list(col_list)
 
-    return cor.loc[cor >= threshold].sort_values(ascending=False).index
+    if remove_self:
+        col_list.remove(col_name)
+
+    return col_list
 
 
 @timed()
@@ -494,10 +514,9 @@ def get_pure_block_list(kind='data'):
 def rename_col_for_merge_across_wtid(wtid, col_name, related_col_count):
     col_list = [col_name, 'time_sn', 'time_slot_7']
     if related_col_count > 0:
-        closed_col = get_closed_columns(col_name, wtid, closed_ratio) #rename_col_for_merge_across_wtid
-        if len(closed_col) >1:
-            closed_col = closed_col[1:related_col_count+1]
-            col_list.extend(closed_col)
+        closed_col = get_closed_columns(col_name, 1, closed_ratio, remove_self=True) #rename_col_for_merge_across_wtid
+        if len(closed_col) >0:
+            col_list.extend(closed_col[:related_col_count])
 
     train = get_train_ex(wtid)[col_list]
     train.columns = [f'{col}_{wtid}' if 'var' in col else col for col in train.columns]
@@ -544,7 +563,6 @@ def get_train_feature_multi_file(wtid, col, file_num, related_col_count):
     file_num = int(file_num)
     if file_num <1:
         raise Exception(f'file_num should be large then 1, cur file_num is {file_num}, {local_args}')
-
     cor = get_corr_wtid(col)
     related_wtid_list = cor[f'{col}_{wtid}'].sort_values(ascending=False)[1:file_num]
     logger.info(f'The top#{file_num} files for wtid:{wtid}, col:{col} is '
@@ -589,12 +607,13 @@ def get_train_val(miss_block_id, file_num, window,
     blks = get_blocks()
     cur_blk = blks.iloc[miss_block_id]
     data_blk_id, b1, e1, b2, e2, b3, e3 = get_train_val_range(miss_block_id, window, shift, after)
-    train = get_train_feature_multi_file(cur_blk.wtid, cur_blk.col, file_num, related_col_count)
+    adj_file_num = max(5, file_num)
+    train = get_train_feature_multi_file(cur_blk.wtid, cur_blk.col, adj_file_num, related_col_count)
 
 
     val_df = train.loc[b2:e2]
     #Drop feature by drop_threshold
-    train_df = get_train_df_by_val(miss_block_id, train.loc[b1:e3], val_df, window, drop_threshold, enable_time)
+    train_df = get_train_df_by_val(miss_block_id, train.loc[b1:e3], val_df, window, drop_threshold, enable_time, file_num)
 
 
 
@@ -745,19 +764,18 @@ def get_col_need_remove(blk_id, closed_ratio=closed_ratio):
     miss = miss.set_index('blk_id')
     cur_name = bk.ix[blk_id, 'col']
 
-    closed_col = get_closed_columns(cur_name, wtid=1, threshold=closed_ratio)
-    closed_col = list(closed_col)
-    closed_col.remove(cur_name)
+    closed_col = get_closed_columns(cur_name, wtid=1, threshold=closed_ratio, remove_self=True)
 
     keep_list = []
     if blk_id not in miss.index:
         return closed_col, keep_list
 
-
+    #Base on the validate data set status to remove training feature, since train have more feature
     for i in range(1, 6):
         threshold = float(miss.ix[blk_id, f'val_{i}'])
-        if threshold > 0:
-            col_name = miss.ix[blk_id, f'name_{i}']
+        #Judge the col need to remove or not
+        col_name = miss.ix[blk_id, f'name_{i}']
+        if threshold > 0.3 and col_name in closed_col:
             # The column will keep
             closed_col.remove(col_name)
             keep_list.append(col_name)

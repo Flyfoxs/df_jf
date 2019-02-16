@@ -145,8 +145,8 @@ def get_submit_feature_by_block_id(blockid, para ):
     missing_length = cur_block['length']
     begin, end = cur_block.begin, cur_block.end
 
-
-    submit = get_train_feature_multi_file(wtid, col_name, int(para.file_num), int(para.related_col_count))
+    adjust_file_num = int(max(5, para.file_num))
+    submit = get_train_feature_multi_file(wtid, col_name, adjust_file_num, int(para.related_col_count))
 
 
     val_feature = submit.loc[begin:end]
@@ -155,7 +155,8 @@ def get_submit_feature_by_block_id(blockid, para ):
     logger.debug(f'Train columns:{submit.columns}')
 
     enable_time = True if para.time_sn > 0 else False
-    train_feature = get_train_df_by_val(blockid, submit, val_feature, para.window, para.drop_threshold, enable_time) #submit
+    train_feature = get_train_df_by_val(blockid, submit, val_feature,
+                                        para.window, para.drop_threshold, enable_time, para.file_num) #submit
 
     logger.debug(f'original: {train_feature.shape}, {val_feature.shape}')
     #
