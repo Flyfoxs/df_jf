@@ -44,7 +44,7 @@ def get_wtid_list_by_bin_id(bin_id, bin_count):
     return df.loc[df.bin_id==bin_id].wtid.drop_duplicates().values
 
 @timed()
-@lru_cache(maxsize=128)
+@lru_cache(maxsize=32)
 def get_train_sample_list(bin_id, col, file_num, window,
                           related_col_count,drop_threshold,enable_time,
                           shift=0, after=True):
@@ -69,7 +69,7 @@ def get_train_sample_list(bin_id, col, file_num, window,
         for miss_blk_id, blk in missing_block.iterrows():
             train_feature, val_feature, index = get_train_val(miss_blk_id,file_num, window,
                                                               related_col_count,drop_threshold,enable_time,
-                                                              shift, after=True)
+                                                              shift, direct='down')
             feature_list.append((train_feature, val_feature, miss_blk_id))
     if len(feature_list) == 0:
         logger.warning(f'Can not find row for:{arg_loc}')
@@ -218,7 +218,12 @@ def estimate_score(top_n, gp_name):
     return best_score
 
 
-def get_args_dynamic(col_name):
+def get_args_dynamic(col_name, force=False):
+    dynamic_args = pd.DataFrame()
+
+    if not check_options().dynamic and force==False:
+        return dynamic_args
+
     is_enum = True if 'int' in date_type[col_name].__name__ else False
 
     if is_enum:
@@ -235,7 +240,7 @@ def get_args_dynamic(col_name):
         return pd.DataFrame()
     tmp = tmp.loc[(tmp.col_name == col_name)][model_paras].drop_duplicates()
 
-    dynamic_args = pd.DataFrame()
+
 
     for sn, arg in tmp.iterrows():
         # File
@@ -294,7 +299,7 @@ def get_args_mini(col_name, para_name, top_n=3):
     # tmp = tmp.loc[tmp.col_name == col_name].sort_values('score_count', ascending=False).reset_index(drop=True)
 
     tmp = tmp.loc[tmp.col_name == col_name].sort_values('score_count', ascending=False).reset_index(drop=True)
-    return  tmp[para_name].drop_duplicates()[:1].values
+    return  tmp[para_name].drop_duplicates()[:2].values
 
 
 @lru_cache()
@@ -305,14 +310,14 @@ def get_window(col_name):
 
 @lru_cache()
 def get_momenta_col_length(col_name):
-    if check_options().mini > 0:
-        return get_args_mini(col_name, 'momenta_col_length')
+    # if check_options().mini > 0:
+    #     return [1,2]#get_args_mini(col_name, 'momenta_col_length')
 
     is_enum = True if 'int' in date_type[col_name].__name__ else False
     if is_enum:
         return [1]
     else:
-        return [1,2,3,4]
+        return [1,2]
 
 @lru_cache()
 def get_momenta_impact_ratio(col_name):
@@ -346,7 +351,7 @@ def get_drop_threshold(col_name):
     return [0.9, 0.95]
 
 def get_related_col_count(col_name):
-    return [0, 1, 2]
+    return [2]
 
 def check_exising_his(score_file):
     try:
@@ -536,39 +541,43 @@ def get_args_all(col_name):
         return df
 
 
-@lru_cache()
+######Can not support cache
 @timed()
+
 def get_args_missing(col_name, bin_id):
     original = get_args_all(col_name)
 
     dynamic = get_args_dynamic(col_name)
 
     todo = pd.concat([original, dynamic])
+    original_len = len(todo)
 
     gp_name = check_options().gp_name
     score_file = f'./score/{gp_name}/{bin_id:02}/{col_name}.h5'
+    #print(score_file)
     try:
         base = pd.read_hdf(score_file, 'score')
-        original_len = len(base)
+        existing_len = len(base)
     except Exception as e:
         logger.info(f'It is a new task for {col_name}, todo_bin_id:{bin_id}')
-        original_len = 0
+        existing_len = 0
 
 
-    if original_len == 0 :
+    if existing_len == 0 :
         logger.info(f'No data is found from file:{score_file}, todo:{todo.shape}')
         todo['bin_id'] = bin_id
         return todo
 
 
     # print(col_list)
+    #print(todo.shape, base.shape, dynamic.shape)
 
     #base = base.rename(columns={'ct': 'ct_old', 'wtid': 'wtid_old'})
 
     todo = todo.merge(base, how='left', on=model_paras)
     todo = todo.loc[pd.isna(todo.ct) & pd.isna(todo.bin_id)][model_paras].reset_index(drop=True)
     todo['bin_id'] = int(bin_id)
-    logger.info(f'Have {len(todo)} todo, original:{original_len}, {col_name}, bin_id:{bin_id}')
+    logger.info(f'Final todo:{len(todo)} , original todo:{original_len}, existing:{existing_len},{col_name}, bin_id:{bin_id}')
     return todo
 
 
@@ -582,8 +591,10 @@ def check_options():
     parser.add_argument("--bin_count", type=int, default=10, help="How many bins will split for each column")
     #parser.add_argument("--bin_id", type=int, default=10)
     parser.add_argument("--check_gap", type=int, default=15, help="Mins to lock the score file")
-    parser.add_argument("--gp_name", type=str, default='lr_bin', help="The folder name to save score")
-    parser.add_argument("--shift", type=float, default=0, required=True, help="The folder name to save score")
+    parser.add_argument("--gp_name", type=str, default='lr_bin_9', help="The folder name to save score")
+    parser.add_argument("--shift", type=float, default=0.0,  help="The folder name to save score")
+
+    parser.add_argument('--dynamic',  action='store_true', default=False, help='Enable the dynamic args')
 
     parser.add_argument("-D", '--debug', action='store_true', default=False)
     parser.add_argument("-W", '--warning', action='store_true', default=False)
@@ -666,10 +677,10 @@ def get_best_para(gp_name, col_name, bin_id, top_n=0, **kwargs):
     try:
         tmp = pd.read_hdf(score_file, 'score')  # get_best_score
     except KeyError:
-        logger.warning(f'Score is not found on file:{score_file}')
+        logger.info(f'Score is not found on file:{score_file}')
         return pd.Series()
     except FileNotFoundError:
-        logger.warning(f'File is not found for:{score_file}')
+        logger.info(f'File is not found for:{score_file}')
         return pd.Series()
 
     tmp = tmp.loc[tmp.bin_id==bin_id]
@@ -688,15 +699,6 @@ def get_best_para(gp_name, col_name, bin_id, top_n=0, **kwargs):
 
     return tmp.iloc[int(top_n)]
 
-
-def score(val1, val2, enum=False):
-    loss = 0
-    for real, predict in zip(val1, val2):
-        if enum:
-            loss += 1 if real == predict else 0
-        else:
-            loss += np.exp(-100 * abs(real - np.round(predict,2)) / max(abs(real), 1e-15))
-    return len(val1), round(loss, 4)
 
 
 

@@ -177,7 +177,7 @@ def get_data_block_all():
 
 
 
-@lru_cache()
+@file_cache()
 def get_blocks():
     train = get_data_block_all()
 
@@ -188,17 +188,28 @@ def get_blocks():
 
     all = pd.concat([train, missing])
 
-    all['length'] = all.end - all.begin +1
-    all.sort_values(['wtid','col','begin'], inplace=True)
+    all['length'] = all.end - all.begin + 1
+
 
     all['data_type'] = all.col.apply(lambda val: date_type[val].__name__)
+
+    all['time_begin'] = None
+    all['time_end'] = None
+
+    for wtid in range(1, 34):
+        df = get_train_ex(wtid)
+        all.loc[all.wtid == wtid, 'time_begin'] = df.loc[all.loc[all.wtid == wtid].begin, 'time_slot_7'].values
+        all.loc[all.wtid == wtid, 'time_end'] = df.loc[all.loc[all.wtid == wtid].end, 'time_slot_7'].values
+
+    all.sort_values(['wtid', 'col', 'begin'], inplace=True)
+
     return all.reset_index(drop=True)
 
 
-def get_break_block():
-    for wtid in range(1, 34):
-        train = get_train_ex(wtid)
-        train = train[date_type.keys()]
+# def get_break_block():
+#     for wtid in range(1, 34):
+#         train = get_train_ex(wtid)
+#         train = train[date_type.keys()]
 
 def get_missing_block_for_col(wtid, col):
     train = get_train_ex(wtid)
@@ -238,12 +249,13 @@ def get_missing_block_single(wtid, col, cur_missing):
 
 def get_train_df_by_val(miss_block_id, train,val_feature, window, drop_threshold, enable_time, file_num):
     #local_args = locals()
+    enable_time = enable_time > 0
     file_num = int(file_num)
     try:
         window_ratio = window
         missing_length = len(val_feature)
-        bk = get_blocks()
-        col_name = bk.ix[miss_block_id,'col']
+        #bk = get_blocks()
+        #col_name = bk.ix[miss_block_id,'col']
 
         cur_windows = max(3, missing_length * window_ratio)
         cur_windows = int(cur_windows)
@@ -295,22 +307,24 @@ def get_train_df_by_val(miss_block_id, train,val_feature, window, drop_threshold
 
         train_feature, val_feature = remove_col_from_redundant_file(train_feature, val_feature, file_num)
 
+        #Remove the row, if the train label is None
+        train_feature = train_feature[ pd.notnull(train_feature.iloc[:,0])]
         #print(train_feature.columns, train_feature.shape[1])
-        if pd.isna(train_feature.iloc[:, 0]).any() or pd.isna(val_feature.iloc[:, 0]).any():
-            logger.error(train_feature.columns)
-            logger.error(train_feature.iloc[:, 0].head())
-            logger.error(val_feature.iloc[:, 0].head())
-            raise Exception(f'Train/val LABEL has None, for {train_feature.index.min()}')
+        if pd.isna(train_feature.iloc[:, 0]).any() : #or pd.isna(val_feature.iloc[:, 0]).any()
+            #logger.error(train_feature.columns)
+            logger.error(f'\n{train_feature.iloc[:, 0].head()}')
+            #logger.error(val_feature.iloc[:, 0].head())
+            raise Exception(f'Train LABEL has None, for {train_feature.index.min()}, blk:{miss_block_id}, window:{window}')
 
         if pd.isna(train_feature.iloc[:,1:]).any().any() :
             #logger.error(f'Train has none for {local_args}')
             logger.error(f'\n{train_feature.head(3)}')
-            raise Exception(f'Train {train_feature.shape} has none for {train_feature.index.min()}')
+            raise Exception(f'Train Feature {train_feature.shape} has none for {train_feature.index.min()}, blk:{miss_block_id}, window:{window}')
 
         if pd.isna(val_feature.iloc[:,1:]).any().any():
             #logger.error(f'Val has none for {local_args}')
             logger.error(f'\n{val_feature.head(3)}')
-            raise Exception(f'Val {val_feature.shape} has none for {val_feature.index.min()}')
+            raise Exception(f'Val Feature {val_feature.shape} has none for {val_feature.index.min()}, blk:{miss_block_id}, window:{window}')
 
         time_gap = max(30, val_feature.time_sn.max() - val_feature.time_sn.min())
         time_begin = val_feature.time_sn.min() - 5 * time_gap
@@ -337,7 +351,7 @@ def get_train_df_by_val(miss_block_id, train,val_feature, window, drop_threshold
     if len(train_feature) == 0:
         logger.exception(f'Train feature length is none, for val block:{val_begin}:{val_end}, window:{window}')
         raise Exception(f'Train feature length is none, for val block:{val_begin}:{val_end}, window:{window}')
-    return train_feature
+    return train_feature, val_feature
 
 
 def remove_col_from_redundant_file(train, val, file_num):
@@ -349,8 +363,8 @@ def remove_col_from_redundant_file(train, val, file_num):
         base_col = str(train.columns[0])
         col_list = [item for item in train.columns if base_col in item]
         drop_list = col_list[file_num:]
-        train.drop(axis='column', columns=drop_list, inplace=True)
-        val.drop(axis='column', columns=drop_list, inplace=True)
+        train = train.drop(axis='column', columns=drop_list )
+        val = val.drop(axis='column', columns=drop_list )
         return train, val
 
 
@@ -556,7 +570,7 @@ def get_corr_wtid(col_name):
     return cor
 
 @timed()
-@lru_cache(maxsize=256)
+@lru_cache(maxsize=32)
 def get_train_feature_multi_file(wtid, col, file_num, related_col_count):
     related_col_count = int(related_col_count)
     local_args = locals()
@@ -598,22 +612,27 @@ def get_train_feature_multi_file(wtid, col, file_num, related_col_count):
     return train.sort_index()
 
 
-@timed()
+#@timed()
+@lru_cache(maxsize=5)
 def get_train_val(miss_block_id, file_num, window,
                   related_col_count, drop_threshold, enable_time,
-                  shift, after ):
+                  shift, direct ):
     local_args = locals()
     logger.info(f'input get_train_val:{locals()}')
+
+
+    data_blk_id, b1, e1, b2, e2, b3, e3 = get_train_val_range(miss_block_id, window, shift, direct)
+
     blks = get_blocks()
-    cur_blk = blks.iloc[miss_block_id]
-    data_blk_id, b1, e1, b2, e2, b3, e3 = get_train_val_range(miss_block_id, window, shift, after)
-    adj_file_num = max(5, file_num)
-    train = get_train_feature_multi_file(cur_blk.wtid, cur_blk.col, adj_file_num, related_col_count)
+    data_blk = blks.iloc[data_blk_id]
+    adj_file_num = max(10, file_num)
+    train = get_train_feature_multi_file(data_blk.wtid, data_blk.col, adj_file_num, related_col_count)
 
 
     val_df = train.loc[b2:e2]
     #Drop feature by drop_threshold
-    train_df = get_train_df_by_val(miss_block_id, train.loc[b1:e3], val_df, window, drop_threshold, enable_time, file_num)
+    train_df, val_df = get_train_df_by_val(miss_block_id, train.loc[b1:e3], val_df, window,
+                                   drop_threshold, enable_time, file_num)
 
 
 
@@ -625,6 +644,9 @@ def get_train_val(miss_block_id, file_num, window,
         logger.error(f'Train df {train_df.shape} only have col:{train_df.columns}, miss_blk:{miss_block_id}')
         raise Exception(f'Train df {train_df.shape} only have col:{train_df.columns}, miss_blk:{miss_block_id}')
 
+    if train_df.shape[1] != val_df.shape[1]:
+        logger.error(f'Train shape not same with val:{train_df.columns}, {val_df.columns}')
+        raise Exception(f'Train/val shape:{train_df.shape}, {val_df.shape}')
     count_none = pd.isna(train_df).sum().sum()
     if count_none > 0:
         logger.error(f'There are {count_none} none for train_df, miss_blk:{miss_block_id}.')
@@ -634,27 +656,91 @@ def get_train_val(miss_block_id, file_num, window,
 
 
 @timed()
-def get_train_val_range(miss_block_id, window, shift, after=True):
+def get_train_val_range(miss_block_id, window, shift, direct='down'):
+    if direct == 'left':
+        return get_train_val_range_left(miss_block_id, window)
     blks = get_blocks()
     missing_block = blks.iloc[miss_block_id]
 
-    blk, data_blk_id = get_closed_block(miss_block_id, window, shift, after)
+    blk, data_blk_id = get_closed_block(miss_block_id, window, shift, direct)
 
     missing = int(missing_block.length)
     shift_adj = int(shift * (window + 1) * missing)
 
-    part_1_b = int(blk.begin + shift_adj)
-    part_1_e = int(part_1_b + np.ceil(window * missing) - 1)
+    if direct=='down':
+        part_1_b = int(blk.begin + shift_adj)
+        part_1_e = int(part_1_b + np.ceil(window * missing) - 1)
 
-    val_b, val_e = part_1_e + 1, int(part_1_e + missing)
-    part_2_b, part_2_e = val_e + 1, int(val_e + np.ceil(window * missing))
+        val_b, val_e = part_1_e + 1, int(part_1_e + missing)
+        part_2_b, part_2_e = val_e + 1, int(val_e + np.ceil(window * missing))
 
-    logger.info(f'range: {part_1_b}:{part_1_e}, {val_b}:{val_e}, {part_2_b}:{part_2_e} for {DefaultMunch(None,blk)}')
-    return data_blk_id, int(part_1_b), int(part_1_e), int(val_b), int(val_e), int(part_2_b), int(part_2_e)
+        logger.info(f'range down: {part_1_b}:{part_1_e}, {val_b}:{val_e}, {part_2_b}:{part_2_e} for {DefaultMunch(None,blk)}')
+        return data_blk_id, int(part_1_b), int(part_1_e), int(val_b), int(val_e), int(part_2_b), int(part_2_e)
+    elif direct=='up':
+        part_2_e = int(blk.end - shift_adj)
+        part_2_b = int(part_2_e - np.ceil(window * missing) + 1)
 
+        val_b, val_e = int(part_2_b - missing), part_2_b -1
+        part_1_b, part_1_e = int(val_b - np.ceil(window * missing)), val_b - 1
+
+        logger.info(
+            f'range {dict}: {part_1_b}:{part_1_e}, {val_b}:{val_e}, {part_2_b}:{part_2_e} for {DefaultMunch(None,blk)}')
+        return data_blk_id, int(part_1_b), int(part_1_e), int(val_b), int(val_e), int(part_2_b), int(part_2_e)
+
+
+def get_train_val_range_left(miss_block_id, window):
+    bk_list = get_blocks()
+    mis_blk = bk_list.loc[miss_block_id]
+    col_name = mis_blk.col
+    mis_wtid = mis_blk.wtid
+
+    time_gap = np.ceil(window * mis_blk.length)
+    cor = get_corr_wtid(col_name)
+    related_wtid_list = cor[f'{col_name}_{mis_wtid}'].sort_values(ascending=False)[1:10]
+    left_blk = None
+    for wtid in related_wtid_list.index:
+        wtid = int(wtid.split('_')[1])
+        # print(wtid)
+        left_blk = bk_list.loc[
+            (bk_list.wtid == wtid) &
+            (bk_list.col == col_name) &
+            (bk_list.kind == 'train') &
+            (bk_list.time_begin <= mis_blk.time_begin - time_gap) &
+            (bk_list.time_end >= mis_blk.time_end + time_gap)
+            ]
+        if len(left_blk) > 1:
+            raise Exception(f'There are {len(left_blk)} blk found on wtid:{wtid} for {mis_blk}')
+
+        elif len(left_blk) == 1:
+            break
+
+    if left_blk is None or len(left_blk)==0:
+        logger.warning(f'Can not find left data block from:{related_wtid_list} for miss blk:{miss_block_id}, window:{window}')
+        if window >=0.5 :
+            return get_train_val_range_left(miss_block_id, window*0.8)
+        else:
+            raise Exception(f'Can not find left data block from:{related_wtid_list} for miss blk:{miss_block_id}, window:{window}')
+    #tmp = left_blk.wtid
+    #print(mis_blk.time_begin.item(), type(mis_blk.time_begin.item()))
+    #logger.info(tmp, left_blk.shape,type(left_blk.wtid), left_blk.wtid.item(), type(left_blk.wtid.item()))
+    train = get_train_ex(left_blk.wtid.item())
+    train = train.loc[(train.time_slot_7 >= left_blk.time_begin.item()) &
+                      (train.time_slot_7 <= left_blk.time_end.item()) &
+                      (train.time_slot_7 >= mis_blk.time_begin.item() - time_gap) &
+                      (train.time_slot_7 <= mis_blk.time_end.item() + time_gap)
+                      ]
+    val = train.loc[(train.time_slot_7 >= mis_blk.time_begin.item()) &
+                    (train.time_slot_7 <= mis_blk.time_end.item())
+                    ]
+
+    train = train.loc[~train.index.isin(val.index)]
+
+    return left_blk.index.max(), train.index.min(), val.index.min() - 1, \
+           val.index.min(), val.index.max(), \
+           val.index.max() + 1, train.index.max()
 
 @timed()
-def get_closed_block(miss_block_id, window, shift, after=True):
+def get_closed_block(miss_block_id, window, shift, direct):
     local_args = locals()
     blks = get_blocks()
     missing_block = blks.iloc[miss_block_id]
@@ -683,7 +769,7 @@ def get_closed_block(miss_block_id, window, shift, after=True):
 
 
 
-    if after:
+    if direct=='down':
         tmp = closed.loc[closed.begin > missing_block.begin]
         # Closed After
         if len(tmp) > 0:
@@ -695,8 +781,8 @@ def get_closed_block(miss_block_id, window, shift, after=True):
             return tmp.iloc[-1], tmp.index[-1]
 
     if len(tmp) == 0:
-        logger.warning(f'No direct block is found for:{miss_block_id}, after:{after}, will reverse')
-        if after:
+        logger.warning(f'No direct block is found for:{miss_block_id}, after:{direct}, will reverse')
+        if direct=='down':
             tmp = closed.loc[closed.begin < missing_block.begin]
             if len(tmp) > 0:
                 return tmp.iloc[-1], tmp.index[-1]
@@ -780,6 +866,18 @@ def get_col_need_remove(blk_id, closed_ratio=closed_ratio):
             closed_col.remove(col_name)
             keep_list.append(col_name)
     return closed_col, keep_list
+
+
+def score(val1, val2, enum=False):
+    loss = 0
+    for real, predict in zip(val1, val2):
+        if enum:
+            loss += 1 if real == predict else 0
+        else:
+            loss += np.exp(-100 * abs(real - np.round(predict,2)) / max(abs(real), 1e-15))
+    return len(val1), round(loss, 4)
+
+
 
 
 if __name__ == '__main__':

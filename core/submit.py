@@ -5,6 +5,7 @@ import fire
 
 
 
+@timed()
 def predict_wtid(wtid):
     app_args = options()
     gp_name = app_args.gp_name
@@ -51,11 +52,12 @@ def predict_wtid(wtid):
     submit.ts = pd.to_datetime(submit.ts)
     train_ex = train_ex[ train_ex.ts.isin(submit.ts) ]
     train_ex.wtid = train_ex.wtid.astype(int)
+    train_ex['index_ex'] = train_ex.index
     train_ex = train_ex.drop(axis=['column'], columns=['time_sn'])
     return convert_enum(train_ex)
 
 
-@file_cache(overwrite=True)
+#@file_cache(overwrite=True)
 def predict_all(version):
     args = options()
 
@@ -83,6 +85,8 @@ def predict_all(version):
     submit.ts = pd.to_datetime(submit.ts)
     submit = submit[['ts', 'wtid']].merge(train_all, how='left', on=['ts', 'wtid'])
     submit = round(submit, 2)
+
+    submit.to_hdf(f"./output/submit_{score_avg:.6f}_{args}.h5", 'score')
 
     file = f"./output/submit_{score_avg:.6f}_{args}.csv"
     submit = submit.iloc[:, :70]
@@ -145,7 +149,7 @@ def get_submit_feature_by_block_id(blockid, para ):
     missing_length = cur_block['length']
     begin, end = cur_block.begin, cur_block.end
 
-    adjust_file_num = int(max(5, para.file_num))
+    adjust_file_num = int(max(10, para.file_num))
     submit = get_train_feature_multi_file(wtid, col_name, adjust_file_num, int(para.related_col_count))
 
 
@@ -155,7 +159,7 @@ def get_submit_feature_by_block_id(blockid, para ):
     logger.debug(f'Train columns:{submit.columns}')
 
     enable_time = True if para.time_sn > 0 else False
-    train_feature = get_train_df_by_val(blockid, submit, val_feature,
+    train_feature, val_feature = get_train_df_by_val(blockid, submit, val_feature,
                                         para.window, para.drop_threshold, enable_time, para.file_num) #submit
 
     logger.debug(f'original: {train_feature.shape}, {val_feature.shape}')
@@ -193,7 +197,7 @@ if __name__ == '__main__':
 
 
     """
-    python core/submit.py -L --gp_name lr_bin_9 --version 0214_v3 > sub.log 2>&1 &
+    python core/submit.py -L --gp_name lr_bin_9 --version 0218_v1 > sub.log 2>&1 &
 
     """
 
