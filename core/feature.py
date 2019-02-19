@@ -252,6 +252,7 @@ def get_train_df_by_val(miss_block_id, train,val_feature, window, drop_threshold
     enable_time = enable_time > 0
     file_num = int(file_num)
     try:
+        cur_col = list(train.columns)[0]
         window_ratio = window
         missing_length = len(val_feature)
         #bk = get_blocks()
@@ -275,8 +276,8 @@ def get_train_df_by_val(miss_block_id, train,val_feature, window, drop_threshold
         #Drop the related col to estimate the miss_blk_id, since the real data is missing
         remove_list, keep_list = get_col_need_remove(miss_block_id)
         if len(remove_list) > 0:
-            val_feature.drop(axis='column', columns=remove_list, errors='ignore')
-            train_feature.drop(axis='column', columns=remove_list, errors='ignore')
+            val_feature = val_feature.drop(axis='column', columns=remove_list, errors='ignore')
+            train_feature = train_feature.drop(axis='column', columns=remove_list, errors='ignore')
             logger.info(f'Remove col:{remove_list}, keep:{keep_list} to estimate blk_id:{miss_block_id}')
 
         #Drop by threshold
@@ -342,6 +343,13 @@ def get_train_df_by_val(miss_block_id, train,val_feature, window, drop_threshold
             logger.info(f'Remove the time_sn for {miss_block_id}, enable_time:{enable_time}')
             del train_feature['time_sn']
             del val_feature['time_sn']
+
+        col_list_other_file = [item for item in train_feature.columns if cur_col in item]
+        if len(col_list_other_file) > file_num :
+            remove_list = col_list_other_file[file_num:]
+            val_feature = val_feature.drop(axis='column', columns=remove_list, errors='ignore')
+            train_feature = train_feature.drop(axis='column', columns=remove_list, errors='ignore')
+
 
     except Exception  as e:
         #logger.error(val_feature)
@@ -446,8 +454,9 @@ def convert_enum(df):
 #     return sorted(gp_list, key=lambda val: len(val), reverse=True )
 
 
-@timed()
+
 @lru_cache(maxsize=9999999)
+@file_cache()
 def get_closed_columns(col_name, wtid=1, threshold=closed_ratio, remove_self=False):
     sub = get_train_ex(wtid)
 
@@ -466,7 +475,7 @@ def get_closed_columns(col_name, wtid=1, threshold=closed_ratio, remove_self=Fal
     if remove_self:
         col_list.remove(col_name)
 
-    return col_list
+    return pd.Series(col_list)
 
 
 @timed()
@@ -529,6 +538,7 @@ def rename_col_for_merge_across_wtid(wtid, col_name, related_col_count):
     col_list = [col_name, 'time_sn', 'time_slot_7']
     if related_col_count > 0:
         closed_col = get_closed_columns(col_name, 1, closed_ratio, remove_self=True) #rename_col_for_merge_across_wtid
+        closed_col = list(closed_col.values)
         if len(closed_col) >0:
             col_list.extend(closed_col[:related_col_count])
 
@@ -631,8 +641,8 @@ def get_train_val(miss_block_id, file_num, window,
 
     val_df = train.loc[b2:e2]
     #Drop feature by drop_threshold
-    train_df, val_df = get_train_df_by_val(miss_block_id, train.loc[b1:e3], val_df, window,
-                                   drop_threshold, enable_time, file_num)
+    train_df, val_df = get_train_df_by_val(miss_block_id, train.loc[b1:e3].copy(), val_df.copy(), window,
+                                   drop_threshold, enable_time, file_num,)
 
 
 
@@ -807,6 +817,7 @@ def get_closed_col_ratio_df():
     df = pd.DataFrame()
     for blk_id, blk in blk_list.iterrows():
         col_list  = get_closed_columns(blk.col, wtid=1, threshold=closed_ratio) #get_closed_col_ratio_df
+        col_list  = list(col_list.values)
         tmp_blk = blk_list[(blk_list.wtid==blk.wtid)  &
                      (blk_list.kind=='missing')&
                      (blk_list.col.isin(col_list) ) &
@@ -851,7 +862,7 @@ def get_col_need_remove(blk_id, closed_ratio=closed_ratio):
     cur_name = bk.ix[blk_id, 'col']
 
     closed_col = get_closed_columns(cur_name, wtid=1, threshold=closed_ratio, remove_self=True)
-
+    closed_col = list(closed_col.values)
     keep_list = []
     if blk_id not in miss.index:
         return closed_col, keep_list
@@ -876,7 +887,6 @@ def score(val1, val2, enum=False):
         else:
             loss += np.exp(-100 * abs(real - np.round(predict,2)) / max(abs(real), 1e-15))
     return len(val1), round(loss, 4)
-
 
 
 

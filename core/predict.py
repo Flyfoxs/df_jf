@@ -7,6 +7,14 @@ import fire
 
 def get_predict_fun(train, args):
 
+    message = f'feature for blk#{args.blk_id},'\
+                f'is{train.shape}:{list(train.columns)}'\
+                f'args:{DefaultMunch(None, args)}'
+    message = message.replace("'",'')
+    message = message.replace('DefaultMunch(None,', '')
+    message = message.replace(': ', ':')
+    logger.info(message)
+
     col_name = args['col_name']
 
     is_enum = True if 'int' in date_type[col_name].__name__ else False
@@ -133,9 +141,9 @@ def _predict_data_block(train_df, val_df, args):
         #print('=====', type(cur_loss), type(cur_count))
 
         if args.blk_id is not None:
-            args.score = round(cur_loss / cur_count, 4)
-            args.score_total = cur_loss
-            args.score_count = cur_count
+            args['score'] = round(cur_loss / cur_count, 4)
+            args['score_total'] = cur_loss
+            args['score_count'] = cur_count
             score_df = score_df.append(args, ignore_index=True)
     else:
         raise Exception(f'{col_name} has none in val_df')
@@ -155,9 +163,11 @@ def predict_section(miss_block_id, wtid, col_name, begin, end, args):
     train_df, val_df = get_train_df_by_val(miss_block_id, train, val_df, args.window,
                                    args.drop_threshold, args.time_sn > 0, args.file_num)
 
-    return _predict_data_block(train_df, val_df, args)
+    args['blk_id']=miss_block_id
+    return _predict_data_block(train_df, val_df, args) #predict_section
 
 
+@timed()
 def predict_block_id(miss_block_id, arg):
     """
     base on up, down, left block to estimate the score
@@ -171,10 +181,11 @@ def predict_block_id(miss_block_id, arg):
                           arg.related_col_count, arg.drop_threshold,
                           arg.time_sn, 0, direct)
 
-        arg.blk_id = miss_block_id
-        arg.direct = direct
-        res, score_df_tmp = _predict_data_block(train_df, val_df, arg)
+        arg['blk_id'] = miss_block_id
+        arg['direct'] = direct
+        res, score_df_tmp = _predict_data_block(train_df, val_df, arg) #predict_block_id
         score_df = pd.concat([score_df, score_df_tmp])
+    logger.info(f'blkid:{miss_block_id},{score_df.shape}, {score_df_tmp.columns}' )
     logger.info(f'blk:{miss_block_id},  avg:{round(score_df_tmp.score.mean(),4)}, std:{round(score_df_tmp.score.std(),4)}')
 
     return res, score_df
@@ -187,42 +198,49 @@ def estimate_arg(miss_block_id, arg_df):
     :param arg_df:
     :return:
     """
-    score_df = pd.DataFrame()
+    score_original = pd.DataFrame()
     for sn, arg in arg_df.iterrows():
         _, score_df_tmp = predict_block_id(miss_block_id, arg)
-        score_df = pd.concat([score_df, score_df_tmp])
-    score_df = score_df.groupby([model_paras]).agg({'score':['mean','std']})
-    score_df.columns = ['_'.join(item) for item in score_df.columns]
-    score_df = score_df.sort_values('score_mean', ascending=False).reset_index()
-    return score_df
+        score_original = pd.concat([score_original, score_df_tmp])
+    score_gp = score_original.groupby(model_paras).agg({'score':['mean','std']})
+    score_gp.columns = ['_'.join(item) for item in score_gp.columns]
+    score_gp = score_gp.sort_values('score_mean', ascending=False).reset_index()
+    return score_gp, score_original
 
 
 @timed()
 def gen_blk_result(miss_block_id, arg_list=None):
-    from core.check import get_args_dynamic
+    # Get Best#0 args
+    score_sn = 0
+
+    from core.check import get_args_all
     cur_block = get_blocks().loc[miss_block_id]
     if arg_list is None:
-        arg_list = get_args_dynamic(cur_block.col, True)
+        arg_list = get_args_all(cur_block.col)
         if len(arg_list) == 0:
             logger.error(f'No dynamc arg is found for blk:{miss_block_id}')
             return 0
         # print('====', arg_list.shape, arg_list)
 
-    #Get Best args
-    score_sn = 0
+    arg_list['blk_id'] = miss_block_id
+
     #logger.info(arg_list)
     logger.info(f'There are {len(arg_list)} args for blk:{miss_block_id}')
-    score_list = estimate_arg(miss_block_id, arg_list)
-    print(len(score_list), len(arg_list))
-    select_arg = score_list[score_sn][-1]
-    logger.info(f'The best score for blkid:{miss_block_id}, avg:{score_list[score_sn][0]}, std:{score_list[score_sn][1]}')
+    score_gp, score_original = estimate_arg(miss_block_id, arg_list)
+    print(len(score_gp), len(arg_list))
+    select_arg = score_gp.iloc[score_sn ][model_paras]
+    score_avg = score_gp.iloc[score_sn]["score_mean"]
+    score_std = score_gp.iloc[score_sn]["score_std"]
+    logger.info(f'The select score for blkid:{miss_block_id}, '
+                f'avg:{score_avg}, '
+                f'std:{score_std},')
 
     col_name = cur_block['col']
     wtid = cur_block['wtid']
     #missing_length = cur_block['length']
     begin, end = cur_block.begin, cur_block.end
 
-    adjust_file_num = int(max(5, select_arg.file_num))
+    adjust_file_num = int(max(10, select_arg.file_num))
     train = get_train_feature_multi_file(wtid, col_name, adjust_file_num, int(select_arg.related_col_count))
 
     sub = train.loc[begin:end]
@@ -231,130 +249,106 @@ def gen_blk_result(miss_block_id, arg_list=None):
                                 select_arg.drop_threshold,
                                 select_arg.time_sn, select_arg.file_num)
 
+    # logger.info( f'feature for blk#{miss_block_id},feature:{related_col_count}, {direct.ljust(5)}, '
+    #             f'window:{window:.2f}, file_num:{file_num:02}, '
+    #             f'is{train_feature.shape} {list(train_feature.columns)}')
+
+    select_arg['blk_id'] = miss_block_id
     predict_fn = get_predict_fun(train, select_arg)
     predict_res = predict_fn(sub.iloc[:, 1:])
     predict_res = np.round(predict_res, 2)
     predict_res = pd.Series(predict_res, index=sub.index)
     logger.debug(f'sub={sub.shape}, predict_res={predict_res.shape}, type={type(predict_res)}')
 
-    file_csv = f'./output/blocks/{col_name}_{miss_block_id:06}_{score_list[score_sn][0]:.4f}.csv'
+    file_csv = f'./output/blocks/{col_name}_{miss_block_id:06}_{score_avg:.4f}_{score_std:.4f}.csv'
     logger.info(f'Result will save to:{file_csv}')
     predict_res.to_csv(file_csv)
-    return len(arg_list)
+    return score_original
 
 
 def process_wtid(wtid):
+    reuse_existing = True
     file = f'./score/blks/{wtid:02}.h5'
-    with factory.create_lock(file, ttl=100000*360): #1hour
-        try:
-            his_df = pd.read_hdf(file, 'his')
+    try:
+        with factory.create_lock(file, ttl=100000*360): #1hour
+            try:
+                his_df = pd.read_hdf(file, 'his')
+                from datetime import timedelta
+                latest = his_df.sort_values('ct', ascending=False).iloc[0]
+                gap = (pd.to_datetime('now') - latest.ct) / timedelta(minutes=1)
+                if gap <= 30:  # 30mins
+                    logger.warning(
+                        f'Ignore this time for {wtid}, since the server:{latest.server} already save in {round(gap)} mins ago, {latest.ct}')
+                    return None
 
-        except FileNotFoundError as e:
-            his_df = pd.DataFrame()
-        latest = his_df.sort_values('ct', ascending=False).iloc[0]
+            except FileNotFoundError as e:
+                logger.info(f'New file for :{file}')
 
-        from datetime import timedelta
-        gap = (pd.to_datetime('now') - latest.ct) / timedelta(minutes=1)
-        if gap <= 30:  # 30mins
-            logger.warning(
-                f'Ignore this time for {col_name}, since the server:{latest.server} already save in {round(gap)} mins ago, {latest.ct}')
-            return None
+            try:
+                score_df = pd.read_hdf(file, 'score')
+            except Exception as e:
+                score_df = pd.DataFrame()
 
-        try:
-            score_df = pd.read_hdf(file, 'score')
-        except Exception as e:
-            score_df = pd.DataFrame()
+            from core.check import heart_beart
+            heart_beart(file, f'Begin with existing:{len(score_df)}')
 
-        from core.check import heart_beart
-        heart_beart(file, f'Begin with existing:{len(score_df)}')
+            blk = get_blocks()
+            process_count = 0
+            begin = 0
+            step  = 3
+            for top_n in range(begin, begin + step):
+                logger.info(f'Status:top_n:{top_n}, wtid:{wtid}')
+                for col in get_predict_col():
+                    tmp = blk.loc[(blk.col == col) & (blk.wtid == wtid) & (blk.kind == 'missing')].sort_values('length', ascending=False)
 
-
-        blk = get_blocks()
-        for top_n in range(0, 24):
-            logger.info(f'Status:top_n:{top_n}, wtid:{wtid}')
-            for col in get_predict_col():
-                tmp = blk.loc[(blk.col == col) & (blk.wtid == wtid) & (blk.kind == 'missing')].sort_values('length',
-                                                                                                           ascending=False)
-                todo = [int(tmp.index.values[top_n])]
-                for blk_id in todo:
+                    if len(tmp.index.values) < top_n+1:
+                        logger.warning(f'The length of the miss for col:{col}, wtid:{wtid} is:{len(tmp.index.values)}, less than {max_top}')
+                        continue
+                    blk_id = tmp.index.values[top_n]
                     try:
-                        gen_blk_result(blk_id)
+                        exist_file_list = glob(f'./output/blocks/var*_{blk_id}_*.csv')
+                        if reuse_existing and len(exist_file_list) > 0:
+                            logger.warning(f'Already exising file for {blk_id}:{exist_file_list}')
+                            continue
+                        process_count += 1
+
+                        # Predict to get result
+                        score_df_tmp = gen_blk_result(blk_id)
+                        score_df = pd.concat([score_df, score_df_tmp])
+
+                        if process_count//3 == 0:
+                            his_df = heart_beart(file, f'Done, {len(score_df)}, top_n#{top_n}, wtid:{wtid}')
+                            score_df.to_hdf(file, 'score', mode='w')
+                            his_df.to_hdf(file, 'his')
                     except Exception as e:
                         logger.exception(e)
                         logger.error(f'Error when process blkid:{blk_id}')
-                heart_beart(file, f'Current:{len(score_df)}')
-
-        his_df = heart_beart(file,f'Done, top_n#{top_n}, wtid:{wtid}')
-        score_df.to_hdf(file, 'score', mode='w')
-        his_df.to_hdf(file, 'his')
-
-
-
-
-
+                his_df = heart_beart(file,f'Done, {len(score_df)}, top_n#{top_n}, wtid:{wtid}')
+                score_df.to_hdf(file, 'score', mode='w')
+                his_df.to_hdf(file, 'his')
+    except RedLockError as e:
+        logger.warning(f'Not get the lock for :{file}')
 
 
 def main():
 
     for wtid in range(1, 34):
-        process_wtid(wtid)
-#
-# class Score_his:
-#
-#     def __init__(self, wtid, col_name):
-#         self.wtid = wtid
-#         self.col_name = col_name
-#         self.
-#         self.df = self.get_lock()
-#
-#     def get_lock(self):
-#         try:
-#             with factory.create_lock(self.file):
-#                 import socket
-#                 host_name = socket.gethostname()
-#                 try:
-#                     his_df = pd.read_hdf(self.file, 'his')
-#
-#                 except FileNotFoundError as e:
-#                     his_df = pd.DataFrame()
-#
-#
-#                 latest = his_df.sort_values('ct', ascending=False).iloc[0]
-#
-#                 from datetime import timedelta
-#                 gap = (pd.to_datetime('now') - latest.ct) / timedelta(minutes=1)
-#                 if gap <= 30: #30mins
-#                     logger.warning(
-#                         f'Ignore this time for {col_name}, since the server:{latest.server} already save in {round(gap)} mins ago, {latest.ct}')
-#                     return None
-#                 his_df = his_df.append({'ct': pd.to_datetime('now'), 'server': host_name, 'msg':'dummy'}, ignore_index=True)
-#                 his_df.to_hdf(self.file, 'his')
-#
-#                 try:
-#                     df = pd.read_hdf(self.file, 'score')
-#                 except FileNotFoundError as e:
-#                     df = pd.DataFrame()
-#                 return df
-#
-#         except RedLockError as e:
-#             logger.warning(f'Other Process is already lock:{bin_col}')
-#             logger.warning(e)
-#             return None
-#
-#
-#
-#
-#     def put(self, paras):
-#         self.df = self.df.append(paras, index_ignore=True)
-#         if len(self.df)//10 == 0:
-#             self.save()
-#
-#
-#     def save(self):
-#
-#         self.df.to_hdf(self.file, 'score', mode='w')
-#         his_df.to_hdf(self.file, 'his')
-#
+
+        from multiprocessing import Pool as ThreadPool  # 进程
+
+        logger.info(f"Start a poll with size:{check_options().thread}")
+        pool = ThreadPool(17)
+
+        # summary = summary_all_best_score()
+
+
+        try:
+            pool.map(process_wtid, range(1, 34), chunksize=1)
+
+        except Exception as e:
+            logger.exception(e)
+            os._exit(9)
+
 
 
 if __name__ == '__main__':
@@ -364,5 +358,9 @@ if __name__ == '__main__':
     main()
     #gen_blk_result(106245)
     # get_train_val_range_left(106245, 2.9)
+
+    """
+    nohup python ./core/predict.py > predict_2.log 2>&1 &
+    """
 
 

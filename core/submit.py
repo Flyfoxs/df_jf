@@ -14,6 +14,7 @@ def predict_wtid(wtid):
     train_ex = get_train_ex(wtid)
     bin_list = get_bin_id_list(gp_name)
     for bin_id in bin_list:
+        logger.info(f'Begin {wtid:02}, {bin_id}/{bin_list}')
         for blockid, missing_block in block_list.loc[
                     (block_list.wtid == wtid) &
                     (block_list.kind == 'missing') &
@@ -75,7 +76,7 @@ def predict_all(version):
 
     from multiprocessing import Pool as ThreadPool  # 进程
 
-    pool = ThreadPool(16)
+    pool = ThreadPool(17)
     train_list  = pool.map(predict_wtid, range(1, 34))
 
     train_all = pd.concat(train_list)#.set_index(['ts', 'wtid'])

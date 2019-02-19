@@ -62,15 +62,21 @@ def get_train_sample_list(bin_id, col, file_num, window,
     block_missing = get_miss_blocks_ex(bin_num) #get_train_sample_list
 
 
-    for wtid in get_wtid_list_by_bin_id(bin_id,bin_num):
-        missing_block = block_missing.loc[(block_missing.wtid == wtid) & (block_missing.bin_id == bin_id)
-                                          & (block_missing.col == col) & (block_missing.kind == 'missing')]
-
-        for miss_blk_id, blk in missing_block.iterrows():
-            train_feature, val_feature, index = get_train_val(miss_blk_id,file_num, window,
-                                                              related_col_count,drop_threshold,enable_time,
-                                                              shift, direct='down')
-            feature_list.append((train_feature, val_feature, miss_blk_id))
+    wtid_list = get_wtid_list_by_bin_id(bin_id,bin_num)
+    missing_block = block_missing.loc[(block_missing.wtid.isin(wtid_list)) & (block_missing.bin_id == bin_id)
+                                      & (block_missing.col == col) & (block_missing.kind == 'missing')]
+    #Only take part of data to validate
+    if len(missing_block) > 0:
+        df_len = int(min((max(len(missing_block) * 0.1, 10)), len(missing_block)))
+        logger.info(f'Only select {int(df_len):02} from {len(missing_block):03} for:{arg_loc}')
+        missing_block = missing_block.sample(df_len,  random_state=1)
+    else:
+        logger.warning(f'No block for:{arg_loc}')
+    for miss_blk_id, blk in missing_block.iterrows():
+        train_feature, val_feature, index = get_train_val(miss_blk_id,file_num, window,
+                                                          related_col_count,drop_threshold,enable_time,
+                                                          shift, direct='down')
+        feature_list.append((train_feature, val_feature, miss_blk_id))
     if len(feature_list) == 0:
         logger.warning(f'Can not find row for:{arg_loc}')
 
@@ -119,6 +125,7 @@ def check_score(args, shift):
         is_enum = True if 'int' in date_type[col].__name__ else False
         logger.debug(f'====={type(train)}, {type(val)}, {blockid}')
         logger.debug(f'Blockid#{blockid}, train:{train.shape}, val:{val.shape}, file_num:{args.file_num}')
+        args['blk_id']=blockid
         check_fn = get_predict_fun(train, args)
 
         # if pic_num:
@@ -217,6 +224,10 @@ def estimate_score(top_n, gp_name):
                 best_score = best_score.append(para, ignore_index=True)
     return best_score
 
+def get_high_priority_col(top_n):
+    tmp = estimate_score(0, 'lr_bin_9')
+    tmp = tmp.groupby('col_name').agg({'score': ['min', 'max']}).sort_values(('score', 'min'))
+    return list(tmp.index)[:top_n]
 
 def get_args_dynamic(col_name, force=False):
     dynamic_args = pd.DataFrame()
@@ -232,19 +243,22 @@ def get_args_dynamic(col_name, force=False):
     gp_name = check_options().gp_name
     try:
         tmp = estimate_score(0, gp_name) #get_args_dynamic
+        tmp = tmp.loc[(tmp.col_name == col_name)][model_paras].drop_duplicates()
     except Exception as e:
         logger.warning(e)
         return pd.DataFrame()
 
     if tmp is None or len(tmp) == 0:
+        logger.warning(f'Can not find dynamic arg for {col_name}, {gp_name}')
         return pd.DataFrame()
-    tmp = tmp.loc[(tmp.col_name == col_name)][model_paras].drop_duplicates()
-
-
 
     for sn, arg in tmp.iterrows():
         # File
         arg_tmp = arg.copy()
+
+        #Existing
+        dynamic_args.append(arg_tmp, ignore_index=True)
+
         arg_tmp.file_num = max(1, arg_tmp.file_num - 1)
         dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
 
@@ -252,12 +266,11 @@ def get_args_dynamic(col_name, force=False):
         arg_tmp.file_num = arg_tmp.file_num + 1
         dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
 
-        arg_tmp = arg.copy()
-        arg_tmp.file_num = arg_tmp.file_num + 2
-        dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
+        # arg_tmp = arg.copy()
+        # arg_tmp.file_num = arg_tmp.file_num + 2
+        # dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
 
         # Window
-
         if arg.window >= 1 and arg.window <= 6:
             ratio = 2
         elif arg.window < 1:
@@ -266,47 +279,37 @@ def get_args_dynamic(col_name, force=False):
             ratio = 0
 
         arg_tmp = arg.copy()
+        dynamic_args.append(arg_tmp, ignore_index=True)
+
         arg_tmp.window = max(0.1, arg_tmp.window - 0.1 * ratio)
         dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
 
-        arg_tmp = arg.copy()
-        arg_tmp.window = max(0.1, arg_tmp.window - 0.2 * ratio)
-        dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
+        # arg_tmp = arg.copy()
+        # arg_tmp.window = max(0.1, arg_tmp.window - 0.2 * ratio)
+        # dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
 
         arg_tmp = arg.copy()
         arg_tmp.window = arg_tmp.window + 0.1 * ratio
         dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
 
-        arg_tmp = arg.copy()
-        arg_tmp.window = arg_tmp.window + 0.2 * ratio
-        dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
+        # arg_tmp = arg.copy()
+        # arg_tmp.window = arg_tmp.window + 0.2 * ratio
+        # dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
 
-    return dynamic_args
+    todo = dynamic_args
+    #Can not disable time_sn, if only one file and no related_col
+    todo.loc[(todo.file_num==1) &(todo.related_col_count==0) , 'time_sn'] = 1
+    todo = todo.drop_duplicates()
 
+    return todo
 
-
-@timed()
-def get_args_mini(col_name, para_name, top_n=3):
-    # tmp = merge_score_col(col_name, [1,2,3]) #get_mini_args
-    #
-    # tmp = tmp.groupby(para_name).agg({'score':['max', 'mean']})
-    # tmp.columns = ['_'.join(items) for items in tmp.columns]
-    # tmp = tmp.sort_values('score_mean', ascending=False)
-    #
-    # args = set(tmp.index.values[:top_n])
-
-    tmp = estimate_score(0, 'base_9')
-    # tmp = tmp.loc[tmp.col_name == col_name].sort_values('score_count', ascending=False).reset_index(drop=True)
-
-    tmp = tmp.loc[tmp.col_name == col_name].sort_values('score_count', ascending=False).reset_index(drop=True)
-    return  tmp[para_name].drop_duplicates()[:2].values
 
 
 @lru_cache()
 def get_window(col_name):
     if check_options().mini > 0:
-        return get_args_mini(col_name, 'window', check_options().mini)
-    return np.arange(0.1, 3, 0.4)
+        return [1, 2]
+    return np.round(np.arange(0.1, 3, 0.4),1)
 
 @lru_cache()
 def get_momenta_col_length(col_name):
@@ -326,9 +329,9 @@ def get_momenta_impact_ratio(col_name):
 
     is_enum = True if 'int' in date_type[col_name].__name__ else False
     if is_enum:
-        return [1]
+        return [0.5]
     else:
-        return [0.1,0.2,0.3,0.4,0.5]
+        return [0.1,0.3,0.5]
 
 def get_time_sn(col_name):
     is_enum = True if 'int' in date_type[col_name].__name__ else False
@@ -340,18 +343,19 @@ def get_time_sn(col_name):
 @lru_cache()
 def get_file_num(col_name):
     if check_options().mini > 0:
-        return get_args_mini(col_name, 'file_num', check_options().mini)
+        return [1,2,4]
+        #return get_args_mini(col_name, 'file_num', check_options().mini)
     is_enum = True if 'int' in date_type[col_name].__name__ else False
     if is_enum:
         return [1]
     else:
-        return range(1,10)
+        return range(1,2,4)
 
 def get_drop_threshold(col_name):
-    return [0.9, 0.95]
+    return [0.85, 0.9, 0.95]
 
 def get_related_col_count(col_name):
-    return [2]
+    return [0]
 
 def check_exising_his(score_file):
     try:
@@ -504,7 +508,8 @@ def check_score_column(bin_col):
         logger.warning(f'Other Process is already lock:{bin_col}')
         logger.warning(e)
 
-
+@timed()
+@lru_cache()
 def get_args_all(col_name):
     df = pd.DataFrame()
     arg_list = []
@@ -538,7 +543,11 @@ def get_args_all(col_name):
                                 # arg_list.append(args)
                                 df = df.append(args,ignore_index=True)
 
-        return df
+        todo = df
+        todo.loc[(todo.file_num == 1) & (todo.related_col_count == 0), 'time_sn'] = 1
+        todo = todo.drop_duplicates()
+
+        return todo
 
 
 ######Can not support cache
@@ -550,6 +559,11 @@ def get_args_missing(col_name, bin_id):
     dynamic = get_args_dynamic(col_name)
 
     todo = pd.concat([original, dynamic])
+
+    #Can not disable time_sn, if only one file and no related_col
+    todo.loc[(todo.file_num==1) &(todo.related_col_count==0) , 'time_sn'] = 1
+    todo = todo.drop_duplicates()
+
     original_len = len(todo)
 
     gp_name = check_options().gp_name
@@ -576,6 +590,8 @@ def get_args_missing(col_name, bin_id):
 
     todo = todo.merge(base, how='left', on=model_paras)
     todo = todo.loc[pd.isna(todo.ct) & pd.isna(todo.bin_id)][model_paras].reset_index(drop=True)
+
+
     todo['bin_id'] = int(bin_id)
     logger.info(f'Final todo:{len(todo)} , original todo:{original_len}, existing:{existing_len},{col_name}, bin_id:{bin_id}')
     return todo
@@ -709,5 +725,6 @@ if __name__ == '__main__':
     check_score_all()
 
     """
-    python ./core/check.py -L  --bin_count 9 --gp_name lr_bin_9  --shift 0 > check1.log 2>&1 &
+    python ./core/check.py -L  --bin_count 9 --gp_name lr_bin_9  > check1.log 2>&1 &
+    python ./core/check.py -L  --bin_count 9 --gp_name lr_bin_9  --dynamic > check1.log 2>&1 &
     """
