@@ -14,6 +14,9 @@ import numpy as np
 from functools import lru_cache
 from munch import *
 import json
+from datetime import timedelta
+
+from file_cache.utils.other import replace_useless_mark
 
 from glob import glob
 
@@ -622,7 +625,7 @@ def get_train_feature_multi_file(wtid, col, file_num, related_col_count):
     return train.sort_index()
 
 
-#@timed()
+@timed()
 @lru_cache(maxsize=5)
 def get_train_val(miss_block_id, file_num, window,
                   related_col_count, drop_threshold, enable_time,
@@ -644,7 +647,11 @@ def get_train_val(miss_block_id, file_num, window,
     train_df, val_df = get_train_df_by_val(miss_block_id, train.loc[b1:e3].copy(), val_df.copy(), window,
                                    drop_threshold, enable_time, file_num,)
 
-
+    if pd.isna(val_df.iloc[:, 0]).any():
+        # logger.error(train_feature.columns)
+        logger.error(f'\n{val_df.iloc[:, 0].head()}')
+        # logger.error(val_feature.iloc[:, 0].head())
+        raise Exception(f'Val LABEL has None for traning, blk:{miss_block_id}, window:{window}, shift:{shift}, {direct})')
 
     if train_df is None or  len(train_df) ==0 :
         logger.error(f'No train is get for :{local_args}')
@@ -652,7 +659,7 @@ def get_train_val(miss_block_id, file_num, window,
 
     if train_df.shape[1]<=1 or val_df.shape[1]<=1:
         logger.error(f'Train df {train_df.shape} only have col:{train_df.columns}, miss_blk:{miss_block_id}')
-        raise Exception(f'Train df {train_df.shape} only have col:{train_df.columns}, miss_blk:{miss_block_id}')
+        raise Exception(f'Train df {train_df.shape} only have col:{train_df.columns}, miss_blk:{miss_block_id}, file:{file_num}, time:{enable_time}')
 
     if train_df.shape[1] != val_df.shape[1]:
         logger.error(f'Train shape not same with val:{train_df.columns}, {val_df.columns}')

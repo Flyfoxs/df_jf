@@ -3,7 +3,7 @@ from redlock import RedLockError
 from core.feature import *
 #from core.check import check_options
 import fire
-
+from core.db import *
 
 def get_predict_fun(train, args):
 
@@ -144,9 +144,11 @@ def _predict_data_block(train_df, val_df, args):
             args['score'] = round(cur_loss / cur_count, 4)
             args['score_total'] = cur_loss
             args['score_count'] = cur_count
+            insert(args)
             score_df = score_df.append(args, ignore_index=True)
     else:
-        raise Exception(f'{col_name} has none in val_df')
+        logger.error(f'blk_id:{args.blk_id},{col_name}....\n{val_df.loc[:, col_name]}')
+        raise Exception(f'{col_name} has none in val_df for blk_id:{args.blk_id}, args{replace_useless_mark(args)}')
 
     return val_res, score_df
 
@@ -207,54 +209,68 @@ def estimate_arg(miss_block_id, arg_df):
     score_gp = score_gp.sort_values('score_mean', ascending=False).reset_index()
     return score_gp, score_original
 
+def gen_best_sub(best_arg):
+#     return gen_blk_result(best_arg.blk_id, pd.DataFrame().append(best_arg,ignore_index=True))
+#
+# @timed()
+# def gen_blk_result(miss_block_id, arg_list=None):
+#     # Get Best#0 args
+#     score_sn = 0
+#
+#     from core.check import get_args_all, get_args_extend
+#     cur_block = get_blocks().loc[miss_block_id]
+#
+#     if arg_list is not None and len(arg_list) == 1:
+#         select_arg = arg_list.iloc[0]
+#     else:
+#         if arg_list is None:
+#             arg_list = get_args_all(cur_block.col)
+#             best = get_best_arg_by_blk(miss_block_id)
+#             if best is not None and len(best) > 0 :
+#                 extend_args = get_args_extend(best)
+#                 arg_list = pd.concat([arg_list, extend_args])
+#
+#             arg_list = get_args_missing_by_blk(arg_list, miss_block_id)
+#             if len(arg_list) == 0:
+#                 logger.warning(f'No dynamc arg is found for blk:{miss_block_id}')
+#                 return 0
+#             # print('====', arg_list.shape, arg_list)
+#
+#
+#         arg_list['blk_id'] = miss_block_id
+#         arg_list['wtid'] = cur_block.wtid
+#
+#         #logger.info(arg_list)
+#         logger.info(f'There are {len(arg_list)} args for blk:{miss_block_id}')
+#         score_gp, score_original = estimate_arg(miss_block_id, arg_list)
+#         print(len(score_gp), len(arg_list))
+#         select_arg = score_gp.iloc[score_sn ]
 
-@timed()
-def gen_blk_result(miss_block_id, arg_list=None):
-    # Get Best#0 args
-    score_sn = 0
+    miss_block_id=best_arg.blk_id
+    cur_block = get_blocks().loc[best_arg.blk_id]
 
-    from core.check import get_args_all
-    cur_block = get_blocks().loc[miss_block_id]
-    if arg_list is None:
-        arg_list = get_args_all(cur_block.col)
-        if len(arg_list) == 0:
-            logger.error(f'No dynamc arg is found for blk:{miss_block_id}')
-            return 0
-        # print('====', arg_list.shape, arg_list)
+    score_avg = best_arg["score_mean"]
+    score_std = best_arg["score_std"]
 
-    arg_list['blk_id'] = miss_block_id
-
-    #logger.info(arg_list)
-    logger.info(f'There are {len(arg_list)} args for blk:{miss_block_id}')
-    score_gp, score_original = estimate_arg(miss_block_id, arg_list)
-    print(len(score_gp), len(arg_list))
-    select_arg = score_gp.iloc[score_sn ][model_paras]
-    score_avg = score_gp.iloc[score_sn]["score_mean"]
-    score_std = score_gp.iloc[score_sn]["score_std"]
     logger.info(f'The select score for blkid:{miss_block_id}, '
                 f'avg:{score_avg}, '
                 f'std:{score_std},')
 
     col_name = cur_block['col']
     wtid = cur_block['wtid']
-    #missing_length = cur_block['length']
     begin, end = cur_block.begin, cur_block.end
 
-    adjust_file_num = int(max(10, select_arg.file_num))
-    train = get_train_feature_multi_file(wtid, col_name, adjust_file_num, int(select_arg.related_col_count))
+    adjust_file_num = int(max(10, best_arg.file_num))
+    train = get_train_feature_multi_file(wtid, col_name, adjust_file_num, int(best_arg.related_col_count))
 
     sub = train.loc[begin:end]
     train, sub = get_train_df_by_val(miss_block_id, train, sub,
-                                select_arg.window,
-                                select_arg.drop_threshold,
-                                select_arg.time_sn, select_arg.file_num)
+                                     best_arg.window,
+                                     best_arg.drop_threshold,
+                                     best_arg.time_sn, best_arg.file_num)
 
-    # logger.info( f'feature for blk#{miss_block_id},feature:{related_col_count}, {direct.ljust(5)}, '
-    #             f'window:{window:.2f}, file_num:{file_num:02}, '
-    #             f'is{train_feature.shape} {list(train_feature.columns)}')
 
-    select_arg['blk_id'] = miss_block_id
-    predict_fn = get_predict_fun(train, select_arg)
+    predict_fn = get_predict_fun(train, best_arg)
     predict_res = predict_fn(sub.iloc[:, 1:])
     predict_res = np.round(predict_res, 2)
     predict_res = pd.Series(predict_res, index=sub.index)
@@ -263,91 +279,70 @@ def gen_blk_result(miss_block_id, arg_list=None):
     file_csv = f'./output/blocks/{col_name}_{miss_block_id:06}_{score_avg:.4f}_{score_std:.4f}.csv'
     logger.info(f'Result will save to:{file_csv}')
     predict_res.to_csv(file_csv)
-    return score_original
+    return score_avg
 
 
-def process_wtid(wtid):
-    reuse_existing = True
-    file = f'./score/blks/{wtid:02}.h5'
+@timed()
+def process_blk_id(blk_id):
+    blk = get_blocks()
+    cur_block = blk.iloc[blk_id]
+    wtid = cur_block.wtid
+
+    reuse_existing = False
+    lock_mins = 30
     try:
-        with factory.create_lock(file, ttl=100000*360): #1hour
-            try:
-                his_df = pd.read_hdf(file, 'his')
-                from datetime import timedelta
-                latest = his_df.sort_values('ct', ascending=False).iloc[0]
-                gap = (pd.to_datetime('now') - latest.ct) / timedelta(minutes=1)
-                if gap <= 30:  # 30mins
-                    logger.warning(
-                        f'Ignore this time for {wtid}, since the server:{latest.server} already save in {round(gap)} mins ago, {latest.ct}')
-                    return None
+        with factory.create_lock(blk_id, ttl=1000*60 *lock_mins):
+                try:
+                    exist_file_list = glob(f'./output/blocks/var*_{blk_id}_*.csv')
+                    if reuse_existing and len(exist_file_list) > 0:
+                        logger.warning(f'Already exising file for {blk_id}:{exist_file_list}')
+                        return None
+                    else:
+                        from core.check import get_args_all, get_args_extend
+                        arg_list = get_args_all(cur_block.col)
+                        best = get_best_arg_by_blk(blk_id)
+                        if best is not None and len(best) > 0:
+                            extend_args = get_args_extend(best)
+                            arg_list = pd.concat([arg_list, extend_args])
 
-            except FileNotFoundError as e:
-                logger.info(f'New file for :{file}')
+                        arg_list = get_args_missing_by_blk(arg_list, blk_id)
+                        if len(arg_list) == 0:
+                            logger.warning(f'No dynamc arg is found for blk:{blk_id}')
+                            return 0
 
-            try:
-                score_df = pd.read_hdf(file, 'score')
-            except Exception as e:
-                score_df = pd.DataFrame()
+                        arg_list['blk_id'] = blk_id
+                        arg_list['wtid'] = cur_block.wtid
 
-            from core.check import heart_beart
-            heart_beart(file, f'Begin with existing:{len(score_df)}')
-
-            blk = get_blocks()
-            process_count = 0
-            begin = 0
-            step  = 3
-            for top_n in range(begin, begin + step):
-                logger.info(f'Status:top_n:{top_n}, wtid:{wtid}')
-                for col in get_predict_col():
-                    tmp = blk.loc[(blk.col == col) & (blk.wtid == wtid) & (blk.kind == 'missing')].sort_values('length', ascending=False)
-
-                    if len(tmp.index.values) < top_n+1:
-                        logger.warning(f'The length of the miss for col:{col}, wtid:{wtid} is:{len(tmp.index.values)}, less than {max_top}')
-                        continue
-                    blk_id = tmp.index.values[top_n]
-                    try:
-                        exist_file_list = glob(f'./output/blocks/var*_{blk_id}_*.csv')
-                        if reuse_existing and len(exist_file_list) > 0:
-                            logger.warning(f'Already exising file for {blk_id}:{exist_file_list}')
-                            continue
-                        process_count += 1
-
-                        # Predict to get result
-                        score_df_tmp = gen_blk_result(blk_id)
-                        score_df = pd.concat([score_df, score_df_tmp])
-
-                        if process_count//3 == 0:
-                            his_df = heart_beart(file, f'Done, {len(score_df)}, top_n#{top_n}, wtid:{wtid}')
-                            score_df.to_hdf(file, 'score', mode='w')
-                            his_df.to_hdf(file, 'his')
-                    except Exception as e:
-                        logger.exception(e)
-                        logger.error(f'Error when process blkid:{blk_id}')
-                his_df = heart_beart(file,f'Done, {len(score_df)}, top_n#{top_n}, wtid:{wtid}')
-                score_df.to_hdf(file, 'score', mode='w')
-                his_df.to_hdf(file, 'his')
+                        # logger.info(arg_list)
+                        logger.info(f'There are {len(arg_list)} args for blk:{blk_id}')
+                        score_gp, score_original = estimate_arg(blk_id, arg_list)
+                        return score_original
+                except Exception as e:
+                    logger.exception(e)
+                    logger.error(f'Error when process blkid:{blk_id}')
+                #his_df = heart_beart(file,f'Done, {len(score_df)}, top_n#{top_n}, wtid:{wtid}')
+                #score_df.to_hdf(file, 'score', mode='w')
+                #his_df.to_hdf(file, 'his')
     except RedLockError as e:
-        logger.warning(f'Not get the lock for :{file}')
+        logger.warning(f'Not get the lock for :{blk_id}')
+        return None
 
 
 def main():
 
-    for wtid in range(1, 34):
+    from multiprocessing import Pool as ThreadPool  # 进程
 
-        from multiprocessing import Pool as ThreadPool  # 进程
+    pool = ThreadPool(8)
 
-        logger.info(f"Start a poll with size:{check_options().thread}")
-        pool = ThreadPool(17)
+    blk_list = get_existing_blk()
 
-        # summary = summary_all_best_score()
+    try:
+        pool.map(process_blk_id, blk_list, chunksize=1)
 
+    except Exception as e:
+        logger.exception(e)
+        os._exit(9)
 
-        try:
-            pool.map(process_wtid, range(1, 34), chunksize=1)
-
-        except Exception as e:
-            logger.exception(e)
-            os._exit(9)
 
 
 

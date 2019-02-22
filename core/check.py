@@ -307,9 +307,7 @@ def get_args_dynamic(col_name, force=False):
 
 @lru_cache()
 def get_window(col_name):
-    if check_options().mini > 0:
-        return [1, 2]
-    return np.round(np.arange(0.1, 3, 0.4),1)
+    return [0.1, 0.5]
 
 @lru_cache()
 def get_momenta_col_length(col_name):
@@ -331,7 +329,7 @@ def get_momenta_impact_ratio(col_name):
     if is_enum:
         return [0.5]
     else:
-        return [0.1,0.3,0.5]
+        return [0.05,0.1,0.3,0.5]
 
 def get_time_sn(col_name):
     is_enum = True if 'int' in date_type[col_name].__name__ else False
@@ -342,9 +340,6 @@ def get_time_sn(col_name):
 
 @lru_cache()
 def get_file_num(col_name):
-    if check_options().mini > 0:
-        return [1,2,4]
-        #return get_args_mini(col_name, 'file_num', check_options().mini)
     is_enum = True if 'int' in date_type[col_name].__name__ else False
     if is_enum:
         return [1]
@@ -599,6 +594,44 @@ def get_args_missing(col_name, bin_id):
 
 
 
+@timed()
+def get_args_extend(best :pd.Series, para_name=None ):
+    if para_name is None:
+        para_name_list = ['file_num', 'window', 'momenta_impact_ratio', 'drop_threshold']
+    else:
+        para_name_list = [para_name]
+    args = pd.DataFrame()
+    if  'file_num' in para_name_list:
+        for file_num in range(1, 10):
+            tmp = best.copy()
+            tmp.file_num = file_num
+            args = args.append(tmp)
+
+    if 'window' in para_name_list:
+        for window_ratio in np.arange(0.7, 2, 0.2):
+            window_new = max(0.1,best.window * window_ratio, 1)
+            tmp = best.copy()
+            tmp.window = min(round(window_new,2),4)
+            args = args.append(tmp)
+    if 'momenta_impact_ratio' in para_name_list:
+        for momenta_impact_ratio in [0.01,0.05,0.1,0.2,0.3,0.4,0.5]:
+            tmp = best.copy()
+            tmp.momenta_impact_ratio = momenta_impact_ratio
+            args = args.append(tmp)
+    if 'drop_threshold' in para_name_list:
+        for drop_threshold in np.arange(0.5, 1, 0.05):
+            tmp = best.copy()
+            tmp.drop_threshold = round(drop_threshold,2)
+            args = args.append(tmp)
+
+    todo = args
+    todo.loc[(todo.file_num == 1) & (todo.related_col_count == 0), 'time_sn'] = 1
+    todo = todo.drop_duplicates()
+    return todo
+
+
+
+
 @lru_cache()
 def check_options():
     import argparse
@@ -610,7 +643,7 @@ def check_options():
     parser.add_argument("--gp_name", type=str, default='lr_bin_9', help="The folder name to save score")
     parser.add_argument("--shift", type=float, default=0.0,  help="The folder name to save score")
 
-    parser.add_argument('--dynamic',  action='store_true', default=False, help='Enable the dynamic args')
+    parser.add_argument('--dynamic',  action='store_true', default=True, help='Enable the dynamic args')
 
     parser.add_argument("-D", '--debug', action='store_true', default=False)
     parser.add_argument("-W", '--warning', action='store_true', default=False)
