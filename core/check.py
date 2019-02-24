@@ -307,7 +307,7 @@ def get_args_dynamic(col_name, force=False):
 
 @lru_cache()
 def get_window(col_name):
-    return [0.1, 0.5]
+    return [0.2, 2]
 
 @lru_cache()
 def get_momenta_col_length(col_name):
@@ -329,7 +329,7 @@ def get_momenta_impact_ratio(col_name):
     if is_enum:
         return [0.5]
     else:
-        return [0.05,0.1,0.3,0.5]
+        return [0.05, 0.3]
 
 def get_time_sn(col_name):
     is_enum = True if 'int' in date_type[col_name].__name__ else False
@@ -344,10 +344,10 @@ def get_file_num(col_name):
     if is_enum:
         return [1]
     else:
-        return range(1,2,4)
+        return [1,4]
 
 def get_drop_threshold(col_name):
-    return [0.85, 0.9, 0.95]
+    return [0.85, 0.9]
 
 def get_related_col_count(col_name):
     return [0]
@@ -514,29 +514,32 @@ def get_args_all(col_name):
     time_sn = True
     related_col_count = 0
     #drop_threshold = 1
-    class_name = 'lr'
-    for window in get_window(col_name):
-        window = round(window, 1)
-        for related_col_count in get_related_col_count(col_name):
-            for drop_threshold in get_drop_threshold(col_name):
-                for momenta_col_length in get_momenta_col_length(col_name):
-                    for momenta_impact_ratio in get_momenta_impact_ratio(col_name):
-                        for time_sn in get_time_sn(col_name):
-                            for file_num in get_file_num(col_name):
-                                args = {
-                                        'col_name': col_name,
-                                        'file_num': file_num,
-                                        'window': window,
-                                        'momenta_col_length': momenta_col_length,
-                                        'momenta_impact_ratio': momenta_impact_ratio,
-                                        'related_col_count': related_col_count,
-                                        'drop_threshold': drop_threshold,
-                                        'time_sn': time_sn,
-                                        'class_name': class_name,
-                                        }
-                                # args = DefaultMunch(None, args)
-                                # arg_list.append(args)
-                                df = df.append(args,ignore_index=True)
+    class_name =  check_options().class_name
+    for class_name in [ class_name ]:
+        for window in get_window(col_name):
+            window = round(window, 1)
+            for related_col_count in get_related_col_count(col_name):
+                for drop_threshold in get_drop_threshold(col_name):
+                    for momenta_col_length in get_momenta_col_length(col_name):
+                        for momenta_impact_ratio in get_momenta_impact_ratio(col_name):
+                            for time_sn in get_time_sn(col_name):
+                                for file_num in get_file_num(col_name):
+                                    args = {
+                                            'col_name': col_name,
+                                            'file_num': file_num,
+                                            'window': window,
+                                            'momenta_col_length': momenta_col_length,
+                                            'momenta_impact_ratio': momenta_impact_ratio,
+                                            'related_col_count': related_col_count,
+                                            'drop_threshold': drop_threshold,
+                                            'time_sn': time_sn,
+                                            'class_name': class_name,
+                                            'n_estimators':0 if class_name =='lr' else 400,
+                                            'max_depth':0 if class_name == 'lr' else 3
+                                            }
+                                    # args = DefaultMunch(None, args)
+                                    # arg_list.append(args)
+                                    df = df.append(args,ignore_index=True)
 
         todo = df
         todo.loc[(todo.file_num == 1) & (todo.related_col_count == 0), 'time_sn'] = 1
@@ -597,7 +600,9 @@ def get_args_missing(col_name, bin_id):
 @timed()
 def get_args_extend(best :pd.Series, para_name=None ):
     if para_name is None:
-        para_name_list = ['file_num', 'window', 'momenta_impact_ratio', 'drop_threshold']
+        para_name_list = ['file_num', 'window',
+                          'momenta_impact_ratio', 'drop_threshold',
+                          'time_sn']
     else:
         para_name_list = [para_name]
     args = pd.DataFrame()
@@ -608,13 +613,19 @@ def get_args_extend(best :pd.Series, para_name=None ):
             args = args.append(tmp)
 
     if 'window' in para_name_list:
-        for window_ratio in np.arange(0.7, 2, 0.2):
-            window_new = max(0.1,best.window * window_ratio, 1)
+        for window_ratio in [0.2,0.5,0.8,1.5,2,3]:
+            window_new = max(0.05,best.window * window_ratio)
+            if window_new > 4:#Increase 0.5
+                window_new = min(6,round(window_new * 2) / 2)
+            if window_new >1 and window_new<=4 :##Increase 0.05
+                window_new = round(window_new * 20) / 20
+            else:
+                window_new = round(window_new,2)
             tmp = best.copy()
-            tmp.window = min(round(window_new,2),4)
+            tmp.window = window_new
             args = args.append(tmp)
     if 'momenta_impact_ratio' in para_name_list:
-        for momenta_impact_ratio in [0.01,0.05,0.1,0.2,0.3,0.4,0.5]:
+        for momenta_impact_ratio in [0,0.01,0.03,0.05,0.1,0.2,0.3,0.4,0.5]:
             tmp = best.copy()
             tmp.momenta_impact_ratio = momenta_impact_ratio
             args = args.append(tmp)
@@ -623,6 +634,13 @@ def get_args_extend(best :pd.Series, para_name=None ):
             tmp = best.copy()
             tmp.drop_threshold = round(drop_threshold,2)
             args = args.append(tmp)
+
+    if 'time_sn' in para_name_list:
+        for time_sn in [0, 1]:
+            tmp.time_sn = time_sn
+            args = args.append(tmp)
+
+
 
     todo = args
     todo.loc[(todo.file_num == 1) & (todo.related_col_count == 0), 'time_sn'] = 1
@@ -642,6 +660,8 @@ def check_options():
     parser.add_argument("--check_gap", type=int, default=15, help="Mins to lock the score file")
     parser.add_argument("--gp_name", type=str, default='lr_bin_9', help="The folder name to save score")
     parser.add_argument("--shift", type=float, default=0.0,  help="The folder name to save score")
+
+    parser.add_argument("--class_name", type=str, default='lr', help="The folder name to save score")
 
     parser.add_argument('--dynamic',  action='store_true', default=True, help='Enable the dynamic args')
 

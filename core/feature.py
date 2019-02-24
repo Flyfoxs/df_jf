@@ -636,22 +636,28 @@ def get_train_val(miss_block_id, file_num, window,
 
     data_blk_id, b1, e1, b2, e2, b3, e3 = get_train_val_range(miss_block_id, window, shift, direct)
 
+
     blks = get_blocks()
-    data_blk = blks.iloc[data_blk_id]
+    data_blk = blks.iloc[abs(data_blk_id)]
     adj_file_num = max(10, file_num)
     train = get_train_feature_multi_file(data_blk.wtid, data_blk.col, adj_file_num, related_col_count)
 
 
     val_df = train.loc[b2:e2]
+
+    if e2 >= len(train):
+        logger.warning(f'Can not find the estimate val_df for blk_id:{miss_block_id}, direct:{direct}, it might be cause by big window:{window}')
+        return None, None, -1
+
+
     #Drop feature by drop_threshold
     train_df, val_df = get_train_df_by_val(miss_block_id, train.loc[b1:e3].copy(), val_df.copy(), window,
                                    drop_threshold, enable_time, file_num,)
 
     if pd.isna(val_df.iloc[:, 0]).any():
-        # logger.error(train_feature.columns)
-        logger.error(f'\n{val_df.iloc[:, 0].head()}')
-        # logger.error(val_feature.iloc[:, 0].head())
-        raise Exception(f'Val LABEL has None for traning, blk:{miss_block_id}, window:{window}, shift:{shift}, {direct})')
+        logger.warning(f'Val LABEL has None for traning, blk:{miss_block_id}, window:{window}, shift:{shift}, {direct})')
+        val_df = val_df.dropna(how='any')
+
 
     if train_df is None or  len(train_df) ==0 :
         logger.error(f'No train is get for :{local_args}')
@@ -802,11 +808,11 @@ def get_closed_block(miss_block_id, window, shift, direct):
         if direct=='down':
             tmp = closed.loc[closed.begin < missing_block.begin]
             if len(tmp) > 0:
-                return tmp.iloc[-1], tmp.index[-1]
+                return tmp.iloc[-1], -1 * tmp.index[-1]
         else:
             tmp = closed.loc[closed.begin > missing_block.begin]
             if len(tmp) > 0:
-                return tmp.iloc[0], tmp.index[0]
+                return tmp.iloc[0], -1 * tmp.index[0]
     logger.error(f"No closed block {window_len} if found for:{local_args}")
     raise Exception(f"No closed block {window_len} if found for:{local_args}")
 

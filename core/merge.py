@@ -33,14 +33,17 @@ def sub_best():
 
     pool = ThreadPool(16)
 
-    blk_list = get_existing_blk()
+    blk_list = get_blocks()
+    blk_list = blk_list.loc[(blk_list.kind=='missing') & (blk_list.wtid==1)]
+
+    blk_list = blk_list.index
     arg_list = []
 
     for blk_id in blk_list:
-        args = get_args_existing_by_blk(blk_id)
-        if len(args) > 50:
+        args = get_best_arg_by_blk(blk_id, 'lr')
+        if args is not None and len(args) > 0:
             args['blk_id'] = blk_id
-            arg_list.append(args.iloc[0])
+            arg_list.append(args)
     logger.info(f'There are {len(arg_list)} blk_id need to do')
     pool.map(gen_best_sub, arg_list, chunksize=1)
 

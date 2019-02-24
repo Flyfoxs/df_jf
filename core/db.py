@@ -58,6 +58,10 @@ def check_last_time_by_wtid(key):
 def insert(score_ind):
     score_ind = score_ind.fillna(0)
     db = get_connect()
+
+    cur_blk = get_blocks().iloc[score_ind.blk_id]
+
+    score_ind['length'] = cur_blk.length
     import socket
     host_name = socket.gethostname()
     score_ind['server'] = host_name
@@ -80,6 +84,9 @@ def insert(score_ind):
             score_total	 ,
             time_sn	 ,
             window  ,
+            n_estimators,
+            max_depth,
+            length ,
             server)
                 values
                 (
@@ -98,18 +105,23 @@ def insert(score_ind):
             {score_total}	 ,
             {time_sn}	 ,
             round({window},2)	  ,
+            {n_estimators},
+            {max_depth},
+            {length},
             '{server}'
                )
                 """.format(**score_ind)
     cur = db.cursor()
-    logger.info(sql)
+    #logger.info(sql)
     cur.execute(sql )
     db.commit()
 
 @lru_cache(maxsize=16)
-def get_args_existing_by_blk(blk_id):
+def get_args_existing_by_blk(blk_id, class_name=None):
     db = get_connect()
-    sql = f""" select * from score_list where blk_id={blk_id}"""
+    class_name = 'null' if class_name is None else f"'{class_name}'"
+    sql = f""" select * from score_list where blk_id={blk_id} 
+                and class_name=ifnull({class_name}, class_name)"""
     exist_df = pd.read_sql(sql, db)
     if len(exist_df) == 0 :
         return exist_df
@@ -120,8 +132,8 @@ def get_args_existing_by_blk(blk_id):
     return exist_df
 
 
-def get_best_arg_by_blk(blk_id):
-    args = get_args_existing_by_blk(blk_id)
+def get_best_arg_by_blk(blk_id,class_name=None):
+    args = get_args_existing_by_blk(blk_id, class_name)
     if args is not None and len(args)>1:
         return args.iloc[0]
     else:
@@ -130,6 +142,11 @@ def get_best_arg_by_blk(blk_id):
 @timed()
 def get_args_missing_by_blk(original: pd.DataFrame, blk_id):
     exist_df = get_args_existing_by_blk(blk_id)
+    threshold = 0.99
+    if exist_df is not None and len(exist_df) > 0 and exist_df.score_mean.max() >= threshold:
+        max_score = exist_df.score_mean.max()
+        logger.info(f'blkid:{blk_id}, col:{exist_df.at[1, "col_name"]}, already the socre:{round(max_score,4)}')
+        return exist_df.loc[pd.isna(exist_df.index)]
 
     original = original.copy().drop(axis='column' , columns=['score_mean', 'score_std'],errors='ignore' )
 

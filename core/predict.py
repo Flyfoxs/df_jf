@@ -1,5 +1,6 @@
 from redlock import RedLockError
 
+
 from core.feature import *
 #from core.check import check_options
 import fire
@@ -34,8 +35,11 @@ def predict_stable_col(train, val, threshold=0.5):
         half = len(train)//2
 
         #TOP value in the begin
-        val_1 = train.iloc[:half, 0].value_counts().index[0]
-        res_1 = np.ones(len(val)//2)*val_1
+        if half == 0:
+            res_1 =[]
+        else:
+            val_1 = train.iloc[:half, 0].value_counts().index[0]
+            res_1 = np.ones(len(val)//2)*val_1
 
         #TOP value in the end
         val_2 = train.iloc[half:, 0].value_counts().index[0]
@@ -75,7 +79,7 @@ def get_momenta_value(arr_begin, arr_end):
 
 @timed()
 def get_cut_predict(train, val, args):
-    from sklearn.linear_model import Ridge, LinearRegression
+
 
     if len(val) <=5 :
         logger.debug(f'The input val is len:{len(val)}')
@@ -83,9 +87,8 @@ def get_cut_predict(train, val, args):
 
     momenta_col_length = int(args.momenta_col_length)
     momenta_impact_length = max(1, int(args.momenta_impact_ratio*len(val)))
-
-    clf = LinearRegression()
     np.random.seed(0)
+    clf = get_clf(args)
 
     try:
         clf.fit(train.iloc[:, 1:], train.iloc[:, 0])
@@ -126,6 +129,19 @@ def get_cut_predict(train, val, args):
     else:
         res = np.round(res,2)
     return res
+
+
+def get_clf (args):
+    from sklearn.linear_model import Ridge, LinearRegression
+    from sklearn.ensemble import RandomForestRegressor
+    if args.class_name =='lr':
+        return LinearRegression()
+    elif args.class_name == 'rf':
+        return RandomForestRegressor(n_estimators=int(args.n_estimators), \
+                                     max_depth= int(args.max_depth), \
+                                     random_state=0)
+
+
 
 
 def _predict_data_block(train_df, val_df, args):
@@ -182,7 +198,9 @@ def predict_block_id(miss_block_id, arg):
             get_train_val(miss_block_id, arg.file_num, round(arg.window,2),
                           arg.related_col_count, arg.drop_threshold,
                           arg.time_sn, 0, direct)
-
+        if data_blk_id<0:
+            logger.warning(f'Can not find closed block for :{replace_useless_mark(arg)}')
+            continue
         arg['blk_id'] = miss_block_id
         arg['direct'] = direct
         res, score_df_tmp = _predict_data_block(train_df, val_df, arg) #predict_block_id
@@ -190,7 +208,7 @@ def predict_block_id(miss_block_id, arg):
     logger.info(f'blkid:{miss_block_id},{score_df.shape}, {score_df_tmp.columns}' )
     logger.info(f'blk:{miss_block_id},  avg:{round(score_df_tmp.score.mean(),4)}, std:{round(score_df_tmp.score.std(),4)}')
 
-    return res, score_df
+    return score_df
 
 
 def estimate_arg(miss_block_id, arg_df):
@@ -202,50 +220,15 @@ def estimate_arg(miss_block_id, arg_df):
     """
     score_original = pd.DataFrame()
     for sn, arg in arg_df.iterrows():
-        _, score_df_tmp = predict_block_id(miss_block_id, arg)
+        score_df_tmp = predict_block_id(miss_block_id, arg)
         score_original = pd.concat([score_original, score_df_tmp])
     score_gp = score_original.groupby(model_paras).agg({'score':['mean','std']})
     score_gp.columns = ['_'.join(item) for item in score_gp.columns]
     score_gp = score_gp.sort_values('score_mean', ascending=False).reset_index()
     return score_gp, score_original
 
+@timed()
 def gen_best_sub(best_arg):
-#     return gen_blk_result(best_arg.blk_id, pd.DataFrame().append(best_arg,ignore_index=True))
-#
-# @timed()
-# def gen_blk_result(miss_block_id, arg_list=None):
-#     # Get Best#0 args
-#     score_sn = 0
-#
-#     from core.check import get_args_all, get_args_extend
-#     cur_block = get_blocks().loc[miss_block_id]
-#
-#     if arg_list is not None and len(arg_list) == 1:
-#         select_arg = arg_list.iloc[0]
-#     else:
-#         if arg_list is None:
-#             arg_list = get_args_all(cur_block.col)
-#             best = get_best_arg_by_blk(miss_block_id)
-#             if best is not None and len(best) > 0 :
-#                 extend_args = get_args_extend(best)
-#                 arg_list = pd.concat([arg_list, extend_args])
-#
-#             arg_list = get_args_missing_by_blk(arg_list, miss_block_id)
-#             if len(arg_list) == 0:
-#                 logger.warning(f'No dynamc arg is found for blk:{miss_block_id}')
-#                 return 0
-#             # print('====', arg_list.shape, arg_list)
-#
-#
-#         arg_list['blk_id'] = miss_block_id
-#         arg_list['wtid'] = cur_block.wtid
-#
-#         #logger.info(arg_list)
-#         logger.info(f'There are {len(arg_list)} args for blk:{miss_block_id}')
-#         score_gp, score_original = estimate_arg(miss_block_id, arg_list)
-#         print(len(score_gp), len(arg_list))
-#         select_arg = score_gp.iloc[score_sn ]
-
     miss_block_id=best_arg.blk_id
     cur_block = get_blocks().loc[best_arg.blk_id]
 
@@ -284,10 +267,11 @@ def gen_best_sub(best_arg):
 
 @timed()
 def process_blk_id(blk_id):
+    from core.check import check_options
     blk = get_blocks()
     cur_block = blk.iloc[blk_id]
-    wtid = cur_block.wtid
-
+    #wtid = cur_block.wtid
+    class_name = check_options().class_name
     reuse_existing = False
     lock_mins = 30
     try:
@@ -300,7 +284,7 @@ def process_blk_id(blk_id):
                     else:
                         from core.check import get_args_all, get_args_extend
                         arg_list = get_args_all(cur_block.col)
-                        best = get_best_arg_by_blk(blk_id)
+                        best = get_best_arg_by_blk(blk_id, class_name)
                         if best is not None and len(best) > 0:
                             extend_args = get_args_extend(best)
                             arg_list = pd.concat([arg_list, extend_args])
@@ -332,12 +316,13 @@ def main():
 
     from multiprocessing import Pool as ThreadPool  # 进程
 
-    pool = ThreadPool(8)
+    pool = ThreadPool(16)
 
-    blk_list = get_existing_blk()
+    blk_list = get_blocks()
+    blk_list = blk_list.loc[(blk_list.kind=='missing') & (blk_list.wtid==1)]
 
     try:
-        pool.map(process_blk_id, blk_list, chunksize=1)
+        pool.map(process_blk_id, blk_list.index, chunksize=np.random.randint(1,64))
 
     except Exception as e:
         logger.exception(e)

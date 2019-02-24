@@ -13,7 +13,10 @@ model_paras = ['class_name', 'col_name',
                'momenta_col_length', 'momenta_impact_ratio',
                'related_col_count',
                'time_sn',
-               'window',]
+               'window',
+                'n_estimators',
+                'max_depth'
+               ]
 
 date_type={
 'wtid'	    :np.int16,
