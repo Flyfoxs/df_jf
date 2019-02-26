@@ -179,7 +179,6 @@ def get_data_block_all():
     return pd.concat(df_list)
 
 
-
 @file_cache()
 def get_blocks():
     train = get_data_block_all()
@@ -901,6 +900,10 @@ def score(val1, val2, enum=False):
             loss += np.exp(-100 * abs(real - np.round(predict,2)) / max(abs(real), 1e-15))
     return len(val1), round(loss, 4)
 
+def get_max_related_ration(wtid, col_name):
+    corr = get_corr_wtid(col_name)[f'{col_name}_{wtid}']
+    corr = corr.drop(f'{col_name}_{wtid}')
+    return corr.sort_values(ascending=False).iloc[0]
 
 
 if __name__ == '__main__':

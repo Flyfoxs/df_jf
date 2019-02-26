@@ -80,13 +80,12 @@ def get_momenta_value(arr_begin, arr_end):
 @timed()
 def get_cut_predict(train, val, args):
 
-
     if len(val) <=5 :
         logger.debug(f'The input val is len:{len(val)}')
         return predict_stable_col(train, val, 0 )
 
     momenta_col_length = int(args.momenta_col_length)
-    momenta_impact_length = max(1, int(args.momenta_impact_ratio*len(val)))
+    momenta_impact_length = args.momenta_impact
     np.random.seed(0)
     clf = get_clf(args)
 
@@ -99,7 +98,7 @@ def get_cut_predict(train, val, args):
         logger.error(f'{train.shape}, \n{train.head()}')
         raise e
 
-    cut_len = max(min(momenta_impact_length, len(val)//2-1),1)
+    cut_len = int(max(min(momenta_impact_length, len(val)//2-1),1))
 
     block_begin = val.index.min()
     block_end = val.index.max()
@@ -114,7 +113,7 @@ def get_cut_predict(train, val, args):
 
     begin_val, end_val = get_momenta_value(begin_val_arr, end_val_arr )
 
-    logger.debug(f'====Begin_val:{begin_val}:{begin_val_arr}, end_val:{begin_val}:{end_val_arr},'
+    logger.info(f'====Begin_val:{begin_val}:{begin_val_arr}, end_val:{begin_val}:{end_val_arr},'
                 f' predict range:{cut_len}:{len(val)-cut_len}, cut_len:{cut_len} ')
 
 
@@ -155,7 +154,7 @@ def _predict_data_block(train_df, val_df, args):
         # print(val_df[col_name].shape, val_res.shape)
         cur_count, cur_loss = score(val_df[col_name], val_res, is_enum)
         #print('=====', type(cur_loss), type(cur_count))
-
+        logger.info(f'{is_enum},{cur_loss}, {cur_count}, {args}, ')
         if args.blk_id is not None:
             args['score'] = round(cur_loss / cur_count, 4)
             args['score_total'] = cur_loss
@@ -193,7 +192,7 @@ def predict_block_id(miss_block_id, arg):
     """
     #print(arg)
     score_df = pd.DataFrame()
-    for direct in ['up', 'down', 'left']:
+    for direct in ['up', 'down']:#, 'left'
         train_df, val_df, data_blk_id = \
             get_train_val(miss_block_id, arg.file_num, round(arg.window,2),
                           arg.related_col_count, arg.drop_threshold,
@@ -277,28 +276,24 @@ def process_blk_id(blk_id):
     try:
         with factory.create_lock(blk_id, ttl=1000*60 *lock_mins):
                 try:
-                    exist_file_list = glob(f'./output/blocks/var*_{blk_id}_*.csv')
-                    if reuse_existing and len(exist_file_list) > 0:
-                        logger.warning(f'Already exising file for {blk_id}:{exist_file_list}')
-                        return None
-                    else:
+                    for i in range(3):
                         from core.check import get_args_all, get_args_extend
-                        arg_list = get_args_all(cur_block.col)
+                        todo = get_args_all(cur_block.col)
                         best = get_best_arg_by_blk(blk_id, class_name)
-                        if best is not None and len(best) > 0:
+                        if best is not None and len(best) > 0 and cur_block.length>10:
                             extend_args = get_args_extend(best)
-                            arg_list = pd.concat([arg_list, extend_args])
+                            todo = pd.concat([todo, extend_args])
 
-                        arg_list = get_args_missing_by_blk(arg_list, blk_id)
+                        arg_list = get_args_missing_by_blk(todo, blk_id)
                         if len(arg_list) == 0:
-                            logger.warning(f'No dynamc arg is found for blk:{blk_id}')
+                            logger.warning(f'No missing arg is found from todo:{len(todo)} for blk:{blk_id}')
                             return 0
 
                         arg_list['blk_id'] = blk_id
                         arg_list['wtid'] = cur_block.wtid
 
                         # logger.info(arg_list)
-                        logger.info(f'There are {len(arg_list)} args for blk:{blk_id}')
+                        logger.info(f'There are {len(arg_list)} args for blk:{blk_id}, loop:{i}')
                         score_gp, score_original = estimate_arg(blk_id, arg_list)
                         return score_original
                 except Exception as e:
@@ -308,7 +303,7 @@ def process_blk_id(blk_id):
                 #score_df.to_hdf(file, 'score', mode='w')
                 #his_df.to_hdf(file, 'his')
     except RedLockError as e:
-        logger.warning(f'Not get the lock for :{blk_id}')
+        logger.info(f'Not get the lock for :{blk_id}')
         return None
 
 
@@ -316,10 +311,13 @@ def main():
 
     from multiprocessing import Pool as ThreadPool  # 进程
 
-    pool = ThreadPool(16)
 
+    imp_list =  ['var042', 'var046', 'var004', 'var027', 'var034', 'var043', 'var068', 'var003', 'var052', 'var040', 'var056', 'var024']
+    pool = ThreadPool(16)
     blk_list = get_blocks()
-    blk_list = blk_list.loc[(blk_list.kind=='missing') & (blk_list.wtid==1)]
+    blk_list = blk_list.loc[(blk_list.kind=='missing') &
+                            (blk_list.wtid==1) &
+                            (blk_list.col.isin(['var052']))] #'var004',
 
     try:
         pool.map(process_blk_id, blk_list.index, chunksize=np.random.randint(1,64))

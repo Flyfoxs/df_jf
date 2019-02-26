@@ -66,8 +66,8 @@ def insert(score_ind):
     host_name = socket.gethostname()
     score_ind['server'] = host_name
     score_ind = dict(score_ind )
-    print(score_ind)
-    print('abc{blk_id}'.format(**score_ind))
+    ##print(score_ind)
+    #print('abc{blk_id}'.format(**score_ind))
     sql = """insert into score_list(
             blk_id  ,
             wtid,
@@ -76,7 +76,7 @@ def insert(score_ind):
             direct	 ,
             file_num	 ,
             momenta_col_length	 ,
-            momenta_impact_ratio	 ,
+            momenta_impact	 ,
             drop_threshold	 ,
             related_col_count	 ,
             score	 ,
@@ -87,6 +87,8 @@ def insert(score_ind):
             n_estimators,
             max_depth,
             length ,
+            time_begin,
+            time_end,
             server)
                 values
                 (
@@ -97,7 +99,7 @@ def insert(score_ind):
             '{direct}',
             {file_num}	 ,
             {momenta_col_length}	 ,
-            round({momenta_impact_ratio},2)	 ,
+            {momenta_impact}	 ,
             round({drop_threshold},2)		 ,
             {related_col_count}	 ,
             {score}	 ,
@@ -108,33 +110,42 @@ def insert(score_ind):
             {n_estimators},
             {max_depth},
             {length},
+            {time_begin},
+            {time_end},
             '{server}'
                )
                 """.format(**score_ind)
     cur = db.cursor()
-    #logger.info(sql)
+    logger.info(sql)
     cur.execute(sql )
     db.commit()
 
 @lru_cache(maxsize=16)
-def get_args_existing_by_blk(blk_id, class_name=None):
+def get_args_existing_by_blk(blk_id, class_name=None, direct=None):
     db = get_connect()
     class_name = 'null' if class_name is None else f"'{class_name}'"
+    direct = 'null' if direct is None else f"'{direct}'"
     sql = f""" select * from score_list where blk_id={blk_id} 
-                and class_name=ifnull({class_name}, class_name)"""
+                and class_name=ifnull({class_name}, class_name)
+                and direct=ifnull({direct}, direct)     
+                """
+    logger.info(f'get_args_existing_by_blk:{sql}')
     exist_df = pd.read_sql(sql, db)
     if len(exist_df) == 0 :
         return exist_df
-    exist_df = exist_df.groupby(model_paras).agg({'score':['mean', 'std']})
+    exist_df = exist_df.groupby(model_paras).agg({'score':['mean','min', 'std','count'], 'length':['max']})
     exist_df.columns = [ '_'.join(item) for item in exist_df.columns]
     #logger.info(exist_df.columns)
     exist_df = exist_df.reset_index().sort_values('score_mean', ascending=False)
     return exist_df
 
 
-def get_best_arg_by_blk(blk_id,class_name=None):
-    args = get_args_existing_by_blk(blk_id, class_name)
+def get_best_arg_by_blk(blk_id,class_name=None,direct=None):
+    args = get_args_existing_by_blk(blk_id, class_name,direct)
     if args is not None and len(args)>1:
+        args = args.reset_index().sort_values(['score_min'], ascending=[False])#.head(10)
+        #args = args.sort_values('score_std')
+        args['blk_id']=blk_id
         return args.iloc[0]
     else:
         return None
@@ -148,7 +159,9 @@ def get_args_missing_by_blk(original: pd.DataFrame, blk_id):
         logger.info(f'blkid:{blk_id}, col:{exist_df.at[1, "col_name"]}, already the socre:{round(max_score,4)}')
         return exist_df.loc[pd.isna(exist_df.index)]
 
-    original = original.copy().drop(axis='column' , columns=['score_mean', 'score_std'],errors='ignore' )
+    original = original.copy().drop(axis='column' ,
+                                    columns=['score_mean', 'score_std',
+                                             'length_max', 'score_count'],errors='ignore' )
 
     if len(exist_df) == 0 :
         return original

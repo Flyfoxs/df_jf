@@ -93,7 +93,7 @@ def check_score(args, shift):
     :param args:
         window:[0.5-n]
         momenta_col_length:[1-100]
-        momenta_impact_ratio:[100-400]
+        momenta_impact:[100-400]
         input_file_num:[1-n]
         related_col_count:[0-n]
         time_sn:True/False
@@ -210,19 +210,16 @@ def check_score_all():
         os._exit(9)
 
 
-@lru_cache()
-#@file_cache()
-def estimate_score(top_n, gp_name):
-    best_score = pd.DataFrame()
-    for col_name in get_predict_col():
-        file = f'./score/{gp_name}/*'
-        from glob import glob
-        for file in sorted(glob(file)):
-            bin_id = int(file.split('/')[-1])
-            para = get_best_para(gp_name, col_name, bin_id, top_n=top_n) #estimate_score
-            if len(para) > 0:
-                best_score = best_score.append(para, ignore_index=True)
-    return best_score
+
+@file_cache()
+def estimate_score(direct, class_name):
+    blk_list = get_blocks()
+    blk_list = blk_list.loc[blk_list.wtid == 1]
+    df = pd.DataFrame()
+    for blk_id in blk_list.index:
+        arg = get_best_arg_by_blk(blk_id,class_name=class_name,direct=direct)
+        df = df.append(arg)
+    return df
 
 def get_high_priority_col(top_n):
     tmp = estimate_score(0, 'lr_bin_9')
@@ -321,15 +318,15 @@ def get_momenta_col_length(col_name):
         return [1,2]
 
 @lru_cache()
-def get_momenta_impact_ratio(col_name):
+def get_momenta_impact(col_name):
     # if check_options().mini > 0:
     #     return get_args_mini(col_name, 'momenta_impact_length', check_options().mini)
 
     is_enum = True if 'int' in date_type[col_name].__name__ else False
     if is_enum:
-        return [0.5]
+        return [0]
     else:
-        return [0.05, 0.3]
+        return [0,10]
 
 def get_time_sn(col_name):
     is_enum = True if 'int' in date_type[col_name].__name__ else False
@@ -509,8 +506,6 @@ def get_args_all(col_name):
     df = pd.DataFrame()
     arg_list = []
     window = 0.7
-    momenta_col_length = 1
-    momenta_impact_ratio = 0.1
     time_sn = True
     related_col_count = 0
     #drop_threshold = 1
@@ -521,7 +516,7 @@ def get_args_all(col_name):
             for related_col_count in get_related_col_count(col_name):
                 for drop_threshold in get_drop_threshold(col_name):
                     for momenta_col_length in get_momenta_col_length(col_name):
-                        for momenta_impact_ratio in get_momenta_impact_ratio(col_name):
+                        for momenta_impact in get_momenta_impact(col_name):
                             for time_sn in get_time_sn(col_name):
                                 for file_num in get_file_num(col_name):
                                     args = {
@@ -529,7 +524,7 @@ def get_args_all(col_name):
                                             'file_num': file_num,
                                             'window': window,
                                             'momenta_col_length': momenta_col_length,
-                                            'momenta_impact_ratio': momenta_impact_ratio,
+                                            'momenta_impact': momenta_impact,
                                             'related_col_count': related_col_count,
                                             'drop_threshold': drop_threshold,
                                             'time_sn': time_sn,
@@ -601,46 +596,54 @@ def get_args_missing(col_name, bin_id):
 def get_args_extend(best :pd.Series, para_name=None ):
     if para_name is None:
         para_name_list = ['file_num', 'window',
-                          'momenta_impact_ratio', 'drop_threshold',
+                          'momenta_impact', 'drop_threshold',
                           'time_sn']
     else:
         para_name_list = [para_name]
     args = pd.DataFrame()
+    args = args.append(best, ignore_index=True)
     if  'file_num' in para_name_list:
-        for file_num in range(1, 10):
+        old_val = best.file_num
+        for ratio in [-2, -1, 1, 2,3,4,5]:
             tmp = best.copy()
-            tmp.file_num = file_num
+            tmp.file_num = max(1,old_val + ratio)
             args = args.append(tmp)
 
     if 'window' in para_name_list:
-        for window_ratio in [0.2,0.5,0.8,1.5,2,3]:
-            window_new = max(0.05,best.window * window_ratio)
-            if window_new > 4:#Increase 0.5
-                window_new = min(6,round(window_new * 2) / 2)
-            if window_new >1 and window_new<=4 :##Increase 0.05
-                window_new = round(window_new * 20) / 20
+        old_val = best.window
+        for ratio in [-2, -1, 1, 2, 4]:
+            if old_val >= 2:
+                step = 0.5
+            elif old_val >= 1:
+                step = 0.4
+            else:
+                step=0.2
+
+            window_new = max(0.1,old_val + (ratio*step))
+            if window_new > 1:#Increase 0.5
+                window_new = round(window_new * 2) / 2
+            # if window_new >1 and window_new<=4 :##Increase 0.05
+            #     window_new = round(window_new * 20) / 20
             else:
                 window_new = round(window_new,2)
             tmp = best.copy()
-            tmp.window = window_new
+            tmp.window = min(6,max(0.05,window_new))
             args = args.append(tmp)
-    if 'momenta_impact_ratio' in para_name_list:
-        for momenta_impact_ratio in [0,0.01,0.03,0.05,0.1,0.2,0.3,0.4,0.5]:
-            tmp = best.copy()
-            tmp.momenta_impact_ratio = momenta_impact_ratio
+    if 'momenta_impact' in para_name_list:
+        for momenta_impact in [0, 10]:
+            tmp.momenta_impact = momenta_impact
             args = args.append(tmp)
     if 'drop_threshold' in para_name_list:
-        for drop_threshold in np.arange(0.5, 1, 0.05):
+        old_val = best.drop_threshold
+        for ratio in [-3, -2, -1, 1, 2]:
             tmp = best.copy()
-            tmp.drop_threshold = round(drop_threshold,2)
+            tmp.drop_threshold = min(0.99,max(0.4,old_val + ratio*0.05))
             args = args.append(tmp)
 
     if 'time_sn' in para_name_list:
         for time_sn in [0, 1]:
             tmp.time_sn = time_sn
             args = args.append(tmp)
-
-
 
     todo = args
     todo.loc[(todo.file_num == 1) & (todo.related_col_count == 0), 'time_sn'] = 1
@@ -763,7 +766,7 @@ def get_best_para(gp_name, col_name, bin_id, top_n=0, **kwargs):
 
     # tmp = tmp.groupby(model_paras).agg({'score':['mean', 'count','min', 'max']}).reset_index()
     # tmp.columns = ['_'.join(item) if item[1] else item[0] for item in tmp.columns]
-    tmp = tmp.sort_values(['score', 'window','momenta_impact_ratio'], ascending=False)
+    tmp = tmp.sort_values(['score', 'window','momenta_impact'], ascending=False)
     tmp = tmp.rename(columns={'score_mean':'score'})
 
     return tmp.iloc[int(top_n)]

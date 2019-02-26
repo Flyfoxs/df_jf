@@ -4,7 +4,7 @@ from core.predict import *
 
 
 @timed()
-def merge_file(base_file = './output/0.67917234.csv'):
+def merge_file(direct, base_file = './output/0.67917234.csv'):
     bk_list = get_blocks()
     file_list = glob('./output/blocks/*.csv')
     file_list = sorted(file_list)
@@ -22,25 +22,27 @@ def merge_file(base_file = './output/0.67917234.csv'):
         base_df.loc[(base_df.wtid==wtid) & (base_df.index_ex.isin(value.iloc[:,0])), col_name]  = value.iloc[:,1].values
 
     base_df = convert_enum(base_df)
-    file = './output/merge_2.csv'
+    file = f'./output/merge_{direct}.csv'
     logger.info(f'Merge file save to:{file}')
     base_df.iloc[:, :70].to_csv(file, index=None)
     return base_df.iloc[:, :70]
 
 @timed()
-def sub_best():
+def sub_best(direct=None):
     from multiprocessing import Pool as ThreadPool
 
     pool = ThreadPool(16)
 
     blk_list = get_blocks()
-    blk_list = blk_list.loc[(blk_list.kind=='missing') & (blk_list.wtid==1)]
+    blk_list = blk_list.loc[(blk_list.kind=='missing') &
+                            (blk_list.wtid==1) &
+                            (blk_list.col=='var004')]
 
     blk_list = blk_list.index
     arg_list = []
 
     for blk_id in blk_list:
-        args = get_best_arg_by_blk(blk_id, 'lr')
+        args = get_best_arg_by_blk(blk_id, 'lr',direct)
         if args is not None and len(args) > 0:
             args['blk_id'] = blk_id
             arg_list.append(args)
@@ -49,7 +51,8 @@ def sub_best():
 
 
 if __name__ == '__main__':
-    sub_best()
-    merge_file()
+    direct = None
+    sub_best(direct)
+    merge_file(direct)
 
 
