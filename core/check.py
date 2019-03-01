@@ -316,9 +316,9 @@ def get_momenta_impact(col_name):
 
     is_enum = True if 'int' in date_type[col_name].__name__ else False
     if is_enum:
-        return [0]
+        return [0.5]
     else:
-        return [0,10]
+        return [0.1,0.3]
 
 def get_time_sn(col_name):
     is_enum = True if 'int' in date_type[col_name].__name__ else False
@@ -594,6 +594,13 @@ def get_args_extend(best :pd.Series, para_name=None ):
         para_name_list = [para_name]
     args = pd.DataFrame()
     args = args.append(best, ignore_index=True)
+
+    #related_col_count
+    for related_col_count in range(4):
+        tmp = best.copy()
+        tmp.related_col_count = related_col_count
+        args = args.append(tmp)
+
     if  'file_num' in para_name_list:
         old_val = best.file_num
         for ratio in [-2, -1, 1, 2,3,4,5]:
@@ -622,9 +629,13 @@ def get_args_extend(best :pd.Series, para_name=None ):
             tmp.window = min(6,max(0.05,window_new))
             args = args.append(tmp)
     if 'momenta_impact' in para_name_list:
-        for momenta_impact in [0, 10]:
-            tmp.momenta_impact = momenta_impact
+        for ratio in [-2, -1, 1, 2]:
+            tmp = best.copy()
+            momenta_impact = tmp.momenta_impact
+            momenta_impact = momenta_impact + ratio * 0.05
+            tmp.momenta_impact =min(0.5, max(0,momenta_impact))
             args = args.append(tmp)
+
     if 'drop_threshold' in para_name_list:
         old_val = best.drop_threshold
         for ratio in [-3, -2, -1, 1, 2]:

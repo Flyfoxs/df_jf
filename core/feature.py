@@ -314,12 +314,12 @@ def get_train_df_by_val(miss_block_id, train,val_feature, window, drop_threshold
 
         train_feature = pd.concat([part1, part2])
 
-        #Drop the related col to estimate the miss_blk_id, since the real data is missing
-        remove_list, keep_list = get_col_need_remove(miss_block_id)
-        if len(remove_list) > 0:
-            val_feature = val_feature.drop(axis='column', columns=remove_list, errors='ignore')
-            train_feature = train_feature.drop(axis='column', columns=remove_list, errors='ignore')
-            logger.info(f'Remove col:{remove_list}, keep:{keep_list} to estimate blk_id:{miss_block_id}')
+        # #Drop the related col to estimate the miss_blk_id, since the real data is missing
+        # remove_list, keep_list = get_col_need_remove(miss_block_id)
+        # if len(remove_list) > 0:
+        #     val_feature = val_feature.drop(axis='column', columns=remove_list, errors='ignore')
+        #     train_feature = train_feature.drop(axis='column', columns=remove_list, errors='ignore')
+        #     logger.info(f'Remove col:{remove_list}, keep:{keep_list} to estimate blk_id:{miss_block_id}')
 
         #Drop by threshold
         col_list = train_feature.columns[1:]
@@ -498,7 +498,7 @@ def convert_enum(df):
 
 @lru_cache(maxsize=9999999)
 @file_cache()
-def get_closed_columns(col_name, wtid=1, threshold=closed_ratio, remove_self=False):
+def get_closed_columns(col_name, wtid, threshold=closed_ratio, remove_self=False):
     sub = get_train_ex(wtid)
 
     sub = sub.dropna(how='any')
@@ -579,7 +579,7 @@ def rename_col_for_merge_across_wtid(wtid, col_name, related_col_count):
     col_list = set([col_name, 'time_sn', 'time_slot_7'])
     if related_col_count > 0:
         #TODO wtid dynamic
-        closed_col = get_closed_columns(col_name, 1, closed_ratio, remove_self=True) #rename_col_for_merge_across_wtid
+        closed_col = get_closed_columns(col_name, wtid, closed_ratio, remove_self=True) #rename_col_for_merge_across_wtid
         closed_col = list(closed_col.values)
         if len(closed_col) >0:
             print(type(closed_col[:related_col_count]))
@@ -871,75 +871,75 @@ def get_bin_id_list(gp_name):
     file = f'./score/{gp_name}/*'
     bin_list =  [int(file.split('/')[-1]) for file in sorted(glob(file))]
     return sorted(bin_list)
+#
+# @file_cache()
+# def get_closed_col_ratio_df():
+#     blk_list = get_blocks()
+#     blk_list = blk_list.loc[blk_list.kind=='missing']#[:200]
+#     blk_list
+#     df = pd.DataFrame()
+#     for blk_id, blk in blk_list.iterrows():
+#         col_list  = get_closed_columns(blk.col, wtid=1, threshold=closed_ratio) #get_closed_col_ratio_df
+#         col_list  = list(col_list.values)
+#         tmp_blk = blk_list[(blk_list.wtid==blk.wtid)  &
+#                      (blk_list.kind=='missing')&
+#                      (blk_list.col.isin(col_list) ) &
+#                       (blk_list.begin == blk.begin) & (blk_list.end == blk.end)]
+#
+#         #print(len(tmp_blk),len(col_list) )
+#
+#         if len(tmp_blk) == len(col_list):
+#             continue
+#
+#         train= get_train_ex(blk.wtid)
+#
+#         tmp = train.loc[blk.begin:blk.end, col_list]
+#         sr_map = {}
+#         sr_map['blk_id']=blk_id
+#         sr_map['col_name']=blk.col
+#         sr_map['wtid'] = blk.wtid
+#         sr_map['begin'] = blk.begin
+#         sr_map['end'] = blk.end
+#         sr_map['length'] = blk.length
+#         for sn, col in enumerate(col_list):
+#             ratio =  pd.notna(tmp[col]).sum() /len(tmp)
+#             sr_map[f'name_{sn}']=col
+#             sr_map[f'val_{sn}']= ratio
+#         df = df.append(sr_map,ignore_index=True)
+#         #print(df.shape, df.val_2.sum())
+#     return df
 
-@file_cache()
-def get_closed_col_ratio_df():
-    blk_list = get_blocks()
-    blk_list = blk_list.loc[blk_list.kind=='missing']#[:200]
-    blk_list
-    df = pd.DataFrame()
-    for blk_id, blk in blk_list.iterrows():
-        col_list  = get_closed_columns(blk.col, wtid=1, threshold=closed_ratio) #get_closed_col_ratio_df
-        col_list  = list(col_list.values)
-        tmp_blk = blk_list[(blk_list.wtid==blk.wtid)  &
-                     (blk_list.kind=='missing')&
-                     (blk_list.col.isin(col_list) ) &
-                      (blk_list.begin == blk.begin) & (blk_list.end == blk.end)]
-
-        #print(len(tmp_blk),len(col_list) )
-
-        if len(tmp_blk) == len(col_list):
-            continue
-
-        train= get_train_ex(blk.wtid)
-
-        tmp = train.loc[blk.begin:blk.end, col_list]
-        sr_map = {}
-        sr_map['blk_id']=blk_id
-        sr_map['col_name']=blk.col
-        sr_map['wtid'] = blk.wtid
-        sr_map['begin'] = blk.begin
-        sr_map['end'] = blk.end
-        sr_map['length'] = blk.length
-        for sn, col in enumerate(col_list):
-            ratio =  pd.notna(tmp[col]).sum() /len(tmp)
-            sr_map[f'name_{sn}']=col
-            sr_map[f'val_{sn}']= ratio
-        df = df.append(sr_map,ignore_index=True)
-        #print(df.shape, df.val_2.sum())
-    return df
-
-
-@timed()
-def get_col_need_remove(blk_id, closed_ratio=closed_ratio):
-    """
-    Check if introduce the related column, how many NONE col need to remove
-    :param blk_id:
-    :param closed_ratio:
-    :return:
-    """
-    bk = get_blocks()
-
-    miss = get_closed_col_ratio_df()
-    miss = miss.set_index('blk_id')
-    cur_name = bk.ix[blk_id, 'col']
-
-    closed_col = get_closed_columns(cur_name, wtid=1, threshold=closed_ratio, remove_self=True)
-    closed_col = list(closed_col.values)
-    keep_list = []
-    if blk_id not in miss.index:
-        return closed_col, keep_list
-
-    #Base on the validate data set status to remove training feature, since train have more feature
-    for i in range(1, 6):
-        threshold = float(miss.ix[blk_id, f'val_{i}'])
-        #Judge the col need to remove or not
-        col_name = miss.ix[blk_id, f'name_{i}']
-        if threshold > 0.3 and col_name in closed_col:
-            # The column will keep
-            closed_col.remove(col_name)
-            keep_list.append(col_name)
-    return closed_col, keep_list
+#
+# @timed()
+# def get_col_need_remove(blk_id, closed_ratio=closed_ratio):
+#     """
+#     Check if introduce the related column, how many NONE col need to remove
+#     :param blk_id:
+#     :param closed_ratio:
+#     :return:
+#     """
+#     bk = get_blocks()
+#
+#     miss = get_closed_col_ratio_df()
+#     miss = miss.set_index('blk_id')
+#     cur_name = bk.ix[blk_id, 'col']
+#
+#     closed_col = get_closed_columns(cur_name, wtid=1, threshold=closed_ratio, remove_self=True)
+#     closed_col = list(closed_col.values)
+#     keep_list = []
+#     if blk_id not in miss.index:
+#         return closed_col, keep_list
+#
+#     #Base on the validate data set status to remove training feature, since train have more feature
+#     for i in range(1, 6):
+#         threshold = float(miss.ix[blk_id, f'val_{i}'])
+#         #Judge the col need to remove or not
+#         col_name = miss.ix[blk_id, f'name_{i}']
+#         if threshold > 0.3 and col_name in closed_col:
+#             # The column will keep
+#             closed_col.remove(col_name)
+#             keep_list.append(col_name)
+#     return closed_col, keep_list
 
 
 def score(val1, val2, enum=False):
@@ -958,7 +958,8 @@ def get_max_related_ration(wtid, col_name):
 
 
 if __name__ == '__main__':
-    get_closed_col_ratio_df()
+    pass
+    # get_closed_col_ratio_df()
 
 
 

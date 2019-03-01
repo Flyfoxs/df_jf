@@ -85,7 +85,7 @@ def get_cut_predict(train, val, args):
         return predict_stable_col(train, val, 0 )
 
     momenta_col_length = int(args.momenta_col_length)
-    momenta_impact_length = args.momenta_impact
+    momenta_impact_length = max(1, int(args.momenta_impact * len(val)))
     np.random.seed(0)
     clf = get_clf(args)
 
@@ -338,7 +338,7 @@ def main():
         para_list.add((row.bin_id, row.col))
 
     try:
-        pool = ThreadPool(8)
+        pool = ThreadPool(10)
         logger.info(f'There are {len(para_list)} para need to process')
         pool.map(process_blk_id, para_list, chunksize=np.random.randint(1,64))
 

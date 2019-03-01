@@ -7,6 +7,8 @@ from core.feature import *
 
 import contextlib
 
+
+version = 1
 @contextlib.contextmanager
 def named_lock(db_session, name, timeout):
     """Get a named mysql lock on a DB session
@@ -34,7 +36,8 @@ def check_last_time_by_binid(bin_id,col_name, threshold):
     db = get_connect()
 
     sql = f""" select IFNULL(max(ct),date'2011-01-01')  from score_list 
-    where bin_id = {int(bin_id)}
+    where version={version}
+    and bin_id = {int(bin_id)}
     and col_name='{col_name}'
     """
     cur = db.cursor()
@@ -50,7 +53,8 @@ def check_last_time_by_binid(bin_id,col_name, threshold):
 @timed()
 def check_last_time_by_wtid(key):
     db = get_connect()
-    sql = f""" select IFNULL(max(ct),date'2011-01-01')  from score_list where wtid = {int(key)}"""
+    sql = f""" select IFNULL(max(ct),date'2011-01-01')  from score_list where 
+    version={version} and  wtid = {int(key)}"""
     # logger.info(sql)
     cur = db.cursor()
     res = cur.execute(sql)
@@ -95,7 +99,8 @@ def insert(score_ind):
             length ,
             time_begin,
             time_end,
-            server)
+            server,
+            version)
                 values
                 (
             {blk_id}  ,
@@ -119,9 +124,10 @@ def insert(score_ind):
             {length},
             {time_begin},
             {time_end},
-            '{server}'
+            '{server}',
+            {version}
                )
-                """.format(**score_ind)
+                """.format(**score_ind, version=version)
     cur = db.cursor()
     logger.info(sql)
     cur.execute(sql )
@@ -152,6 +158,7 @@ def get_args_existing_by_blk(bin_id, col_name, class_name=None, direct=None):
                                 and col_name='{col_name}'
                                 and class_name=ifnull({class_name}, class_name)
                                 and direct=ifnull({direct}, direct)  
+                                and version={version}
                         group by
                         class_name, 
                         col_name,
