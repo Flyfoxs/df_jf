@@ -1,8 +1,16 @@
-cd "$(dirname "$0")"
-
-cd ..
+#!/bin/bash
 
 PYTHONPATH=/users/hdpsbp/bk/df_jf:/users/hdpsbp/felix/keras:$PYTHONPATH
 
 PATH=/apps/dslab/anaconda/python3/bin:$PATH
-python ./core/check.py -L --wtid $1  $2 $3 $4 $5 $6 > log/score_"$(hostname)".log 2>&1
+
+
+
+for bin_count in 9 9 9 9
+do
+    echo $bin_count
+
+    python ./core/check.py -L   --bin_count $bin_count  --gp_name lr_bin_$bin_count  --shift 0   \
+                    >> log/bin_"$(hostname)"_$bin_count.log 2>&1
+done
+# nohup ./bin/check_mini.sh 5 &

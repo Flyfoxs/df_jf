@@ -4,10 +4,10 @@ cd "$(dirname "$0")"
 cd ..
 
 if [[ -z "$1" ]]; then
-    rsync -av --exclude-from './bin/exclude.txt' $(pwd) hdpsbp@ai-prd-07:/users/hdpsbp/bk/
+    rsync -av --exclude-from './bin/exclude.txt' $(pwd) hdpsbp@ai-prd-07:/users/hdpsbp/felix/
 else
-    rsync -av $(pwd) hdpsbp@ai-prd-07:/users/hdpsbp/bk/
+    rsync -av $(pwd) hdpsbp@ai-prd-05:/users/hdpsbp/felix/
 fi
 
-
+date
 

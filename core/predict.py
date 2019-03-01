@@ -143,10 +143,9 @@ def get_clf (args):
 
 
 
-def _predict_data_block(train_df, val_df, args):
-    score_df = pd.DataFrame()
+def _predict_data_block(train_df, val_df, arg):
     col_name = str(train_df.columns[0])
-    check_fn = get_predict_fun(train_df, args)
+    check_fn = get_predict_fun(train_df, arg)
     val_res = check_fn(val_df.iloc[:, 1:])
 
     if pd.notna(val_df.loc[:, col_name]).all():
@@ -154,34 +153,34 @@ def _predict_data_block(train_df, val_df, args):
         # print(val_df[col_name].shape, val_res.shape)
         cur_count, cur_loss = score(val_df[col_name], val_res, is_enum)
         #print('=====', type(cur_loss), type(cur_count))
-        logger.info(f'{is_enum},{cur_loss}, {cur_count}, {args}, ')
-        if args.blk_id is not None:
-            args['score'] = round(cur_loss / cur_count, 4)
-            args['score_total'] = cur_loss
-            args['score_count'] = cur_count
-            insert(args)
-            score_df = score_df.append(args, ignore_index=True)
+        logger.info(f'{is_enum},{cur_loss}, {cur_count}, {arg}, ')
+        if arg.blk_id is not None:
+            arg['score'] = round(cur_loss / cur_count, 4)
+            arg['score_total'] = cur_loss
+            arg['score_count'] = cur_count
+            insert(arg)
+            #score_df = score_df.append(args, ignore_index=True)
     else:
-        logger.error(f'blk_id:{args.blk_id},{col_name}....\n{val_df.loc[:, col_name]}')
-        raise Exception(f'{col_name} has none in val_df for blk_id:{args.blk_id}, args{replace_useless_mark(args)}')
+        logger.error(f'blk_id:{arg.blk_id},{col_name}....\n{val_df.loc[:, col_name]}')
+        raise Exception(f'{col_name} has none in val_df for blk_id:{arg.blk_id}, args{replace_useless_mark(arg)}')
 
-    return val_res, score_df
+    return val_res, arg
 
 
 
-def predict_section(miss_block_id, wtid, col_name, begin, end, args):
-    """
-    output:resut, score
-    """
-    train = get_train_feature_multi_file(wtid, col_name, max(10, args.file_num), args.related_col_count)
-
-    val_df = train.loc[begin:end]
-
-    train_df, val_df = get_train_df_by_val(miss_block_id, train, val_df, args.window,
-                                   args.drop_threshold, args.time_sn > 0, args.file_num)
-
-    args['blk_id']=miss_block_id
-    return _predict_data_block(train_df, val_df, args) #predict_section
+# def predict_section(miss_block_id, wtid, col_name, begin, end, args):
+#     """
+#     output:resut, score
+#     """
+#     train = get_train_feature_multi_file(wtid, col_name, max(10, args.file_num), args.related_col_count)
+#
+#     val_df = train.loc[begin:end]
+#
+#     train_df, val_df = get_train_df_by_val(miss_block_id, train, val_df, args.window,
+#                                    args.drop_threshold, args.time_sn > 0, args.file_num)
+#
+#     args['blk_id']=miss_block_id
+#     return _predict_data_block(train_df, val_df, args) #predict_section
 
 
 @timed()
@@ -190,24 +189,21 @@ def predict_block_id(miss_block_id, arg):
     base on up, down, left block to estimate the score
     output:resut, score
     """
-    #print(arg)
-    score_df = pd.DataFrame()
-    for direct in ['up', 'down']:#, 'left'
-        train_df, val_df, data_blk_id = \
-            get_train_val(miss_block_id, arg.file_num, round(arg.window,2),
-                          arg.related_col_count, arg.drop_threshold,
-                          arg.time_sn, 0, direct)
-        if data_blk_id<0:
-            logger.warning(f'Can not find closed block for :{replace_useless_mark(arg)}')
-            continue
-        arg['blk_id'] = miss_block_id
-        arg['direct'] = direct
-        res, score_df_tmp = _predict_data_block(train_df, val_df, arg) #predict_block_id
-        score_df = pd.concat([score_df, score_df_tmp])
-    logger.info(f'blkid:{miss_block_id},{score_df.shape}, {score_df_tmp.columns}' )
-    logger.info(f'blk:{miss_block_id},  avg:{round(score_df_tmp.score.mean(),4)}, std:{round(score_df_tmp.score.std(),4)}')
 
-    return score_df
+    train_df, val_df, data_blk_id = \
+        get_train_val(miss_block_id, arg.file_num, round(arg.window,2),
+                      arg.related_col_count, arg.drop_threshold,
+                      arg.time_sn, 0, arg.direct, model=0)
+    if data_blk_id<0:
+        logger.warning(f'Can not find closed block for :{replace_useless_mark(arg)}')
+        return None
+    arg['blk_id'] = miss_block_id
+    res, args_score = _predict_data_block(train_df, val_df, arg) #predict_block_id
+
+
+    #logger.info(f'blk:{miss_block_id},  avg:{round(score_df_tmp.score.mean(),4)}, std:{round(score_df_tmp.score.std(),4)}')
+
+    return args_score
 
 
 def estimate_arg(miss_block_id, arg_df):
@@ -217,14 +213,13 @@ def estimate_arg(miss_block_id, arg_df):
     :param arg_df:
     :return:
     """
-    score_original = pd.DataFrame()
+    score_list = pd.DataFrame()
     for sn, arg in arg_df.iterrows():
-        score_df_tmp = predict_block_id(miss_block_id, arg)
-        score_original = pd.concat([score_original, score_df_tmp])
-    score_gp = score_original.groupby(model_paras).agg({'score':['mean','std']})
-    score_gp.columns = ['_'.join(item) for item in score_gp.columns]
-    score_gp = score_gp.sort_values('score_mean', ascending=False).reset_index()
-    return score_gp, score_original
+        score_arg = predict_block_id(miss_block_id, arg)
+        score_list = score_list.append(score_arg, ignore_index=True)
+
+    return score_list
+
 
 @timed()
 def gen_best_sub(best_arg):
@@ -249,7 +244,7 @@ def gen_best_sub(best_arg):
     train, sub = get_train_df_by_val(miss_block_id, train, sub,
                                      best_arg.window,
                                      best_arg.drop_threshold,
-                                     best_arg.time_sn, best_arg.file_num)
+                                     best_arg.time_sn, best_arg.file_num, model=3)
 
 
     predict_fn = get_predict_fun(train, best_arg)
@@ -265,37 +260,54 @@ def gen_best_sub(best_arg):
 
 
 @timed()
-def process_blk_id(blk_id):
-    from core.check import check_options
-    blk = get_blocks()
-    cur_block = blk.iloc[blk_id]
+def process_blk_id(bin_col):
+    bin_id, col_name = bin_col
+    from core.check import check_options, get_miss_blocks_ex
+
     #wtid = cur_block.wtid
     class_name = check_options().class_name
     reuse_existing = False
-    lock_mins = 30
+    lock_mins = 10
     try:
-        with factory.create_lock(blk_id, ttl=1000*60 *lock_mins):
+        with factory.create_lock(bin_col, ttl=1000*60 *lock_mins):
                 try:
-                    for i in range(3):
-                        from core.check import get_args_all, get_args_extend
-                        todo = get_args_all(cur_block.col)
-                        best = get_best_arg_by_blk(blk_id, class_name)
-                        if best is not None and len(best) > 0 and cur_block.length>10:
-                            extend_args = get_args_extend(best)
-                            todo = pd.concat([todo, extend_args])
 
-                        arg_list = get_args_missing_by_blk(todo, blk_id)
-                        if len(arg_list) == 0:
-                            logger.warning(f'No missing arg is found from todo:{len(todo)} for blk:{blk_id}')
-                            return 0
+                    is_continue = check_last_time_by_binid(bin_id,col_name,lock_mins)
+                    if not is_continue:
+                        logger.warning(f'The binid#{bin_col} is still in processed in {lock_mins} mins')
+                        return 'In processing'
+                    from core.check import get_args_all, get_args_extend
 
+                    todo = get_args_all(col_name)
+                    best = get_best_arg_by_blk(bin_id, col_name, class_name)
+                    if best is not None and len(best) > 0 : # and cur_block.length > 10:
+                        extend_args = get_args_extend(best)
+                        todo = pd.concat([todo, extend_args])
+
+                    arg_list = get_args_missing_by_blk(todo, bin_id, col_name)
+                    if len(arg_list) == 0:
+                        logger.warning(f'No missing arg is found from todo:{len(todo)} for blk:{blk_id}')
+                        return 0
+
+                    score_list_binid = []
+                    #Estimate by blk_list
+                    miss = get_miss_blocks_ex()
+                    miss = miss.loc[(miss.col==col_name ) & (miss.bin_id==bin_id)]
+                    for sn, blk_id in enumerate(list(miss.index)):
+
+                        blk = get_blocks()
+                        cur_block = blk.iloc[blk_id]
+
+                        arg_list['bin_id'] = bin_id
                         arg_list['blk_id'] = blk_id
                         arg_list['wtid'] = cur_block.wtid
+                        arg_list['direct'] = 'down'
 
                         # logger.info(arg_list)
-                        logger.info(f'There are {len(arg_list)} args for blk:{blk_id}, loop:{i}')
-                        score_gp, score_original = estimate_arg(blk_id, arg_list)
-                        return score_original
+                        logger.info(f'There are {len(arg_list):02} args for bin:{bin_col}, blk:{blk_id:06},{sn:03}/{len(miss):03}')
+                        score_list = estimate_arg(blk_id, arg_list)
+                        score_list_binid.append(score_list)
+                    return pd.concat(score_list_binid)
                 except Exception as e:
                     logger.exception(e)
                     logger.error(f'Error when process blkid:{blk_id}')
@@ -303,24 +315,32 @@ def process_blk_id(blk_id):
                 #score_df.to_hdf(file, 'score', mode='w')
                 #his_df.to_hdf(file, 'his')
     except RedLockError as e:
-        logger.info(f'Not get the lock for :{blk_id}')
-        return None
+        logger.info(f'Not get the lock for :{bin_col}')
+        return 'No Lock'
 
 
+@timed()
 def main():
+    from core.check import get_miss_blocks_ex
 
     from multiprocessing import Pool as ThreadPool  # 进程
 
 
     imp_list =  ['var042', 'var046', 'var004', 'var027', 'var034', 'var043', 'var068', 'var003', 'var052', 'var040', 'var056', 'var024']
-    pool = ThreadPool(16)
-    blk_list = get_blocks()
-    blk_list = blk_list.loc[(blk_list.kind=='missing') &
-                            (blk_list.wtid==1) &
-                            (blk_list.col.isin(['var052']))] #'var004',
+
+    blk_list = get_miss_blocks_ex()
+    blk_list = blk_list.loc[#(blk_list.kind=='missing') &
+                            #(blk_list.wtid==1) &
+                            (blk_list.col.isin(imp_list))] #'var004',
+
+    para_list = set([])
+    for sn, row in blk_list.iterrows():
+        para_list.add((row.bin_id, row.col))
 
     try:
-        pool.map(process_blk_id, blk_list.index, chunksize=np.random.randint(1,64))
+        pool = ThreadPool(8)
+        logger.info(f'There are {len(para_list)} para need to process')
+        pool.map(process_blk_id, para_list, chunksize=np.random.randint(1,64))
 
     except Exception as e:
         logger.exception(e)

@@ -1,0 +1,42 @@
+
+
+drop table score_list;
+
+create table score_list(
+ID int NOT NULL AUTO_INCREMENT PRIMARY KEY ,
+blk_id int,
+wtid int,
+class_name	VARCHAR(16),
+col_name	VARCHAR(16),
+direct	VARCHAR(16),
+file_num	int,
+momenta_col_length	int,
+momenta_impact	int,
+drop_threshold	DECIMAL(6,4),
+related_col_count	int,
+score	DECIMAL(8,4),
+score_count	int,
+score_total	DECIMAL(8,2),
+time_sn	int,
+window DECIMAL(6,2),
+server VARCHAR(16),
+n_estimators int,
+max_depth int,
+time_begin int,
+time_end int,
+length int,
+version varchar(16),
+ct     TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX blk_id_index
+ON score_list (blk_id);
+
+CREATE INDEX bin_id_index
+ON score_list (bin_id);
+
+CREATE INDEX col_name_index
+ON score_list (col_name);
+
+CREATE INDEX wtid_index
+ON score_list (wtid);

@@ -11,33 +11,25 @@ import fire
 
 from core.predict import *
 
-@lru_cache()
-@timed()
-def get_miss_blocks_ex(bin_num=None, gp_name=None, kind ='cut' ):
+@file_cache()
+def get_miss_blocks_ex():
+    blks = get_blocks()
+    blks['bin_des'] = None
+    blks['bin_id'] = None
+    bk_list = []
+    for col_name in get_predict_col():
+        blks_tmp = blks.loc[(blks.kind == 'missing')]
+        blks_tmp = blks_tmp.loc[(blks.col == col_name) & (blks.kind == 'missing')]  # & (blks.wtid==1)
+        # blks.length.sort_values().reset_index(drop=True).plot()
 
-    if bin_num is None and gp_name is not None:
-        file = f'./score/{gp_name}/*'
-        bin_num = len(glob(file))
-    elif bin_num is None and gp_name is None:
-        logger.exception(f'Need input in_num or gp_name')
-        raise Exception(f'Need input in_num or gp_name')
+        #blks_tmp['bin_des'] = pd.cut(blks_tmp.length, 10)
 
-    blk_list = []
-    blk = get_blocks()
-    blk = blk.loc[blk.kind=='missing']
-    gp = blk.groupby('col')
-    for col_name in gp.groups:
-        gp_tmp = gp.get_group(col_name)
+        # blks_tmp.bin_des.value_counts().sort_index()
 
-        if kind == 'qcut':
-            gp_tmp.loc[:,'bin_des'] = pd.qcut(gp_tmp.length, bin_num)
-        else:
-            gp_tmp.loc[:,'bin_des'] = pd.cut(gp_tmp.length, bin_num)
-        gp_tmp.loc[:,'bin_id']  = gp_tmp.bin_des.cat.codes
-        blk_list.append(gp_tmp)
-    res = pd.concat(blk_list)
-    #res.loc[:,'bin_id'] = res.apply(lambda row: f'{row.wtid:02}_{row.bin_id}', axis=1)
-    return res
+        blks_tmp['bin_id'] = pd.cut(blks_tmp.length, 10).cat.codes
+        bk_list.append(blks_tmp)
+    blks = pd.concat(bk_list)
+    return blks
 
 def get_wtid_list_by_bin_id(bin_id, bin_count):
     df = get_miss_blocks_ex(bin_count) #get_wtid_list_by_bin_id

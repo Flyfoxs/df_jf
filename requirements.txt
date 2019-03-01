@@ -1,0 +1,6 @@
+mysql-connector
+file_cache
+redlock
+munch
+fire
+msgpack

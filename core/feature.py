@@ -178,7 +178,7 @@ def get_data_block_all():
             df_list.append(df_tmp)
     return pd.concat(df_list)
 
-
+@lru_cache()
 @file_cache()
 def get_blocks():
     train = get_data_block_all()
@@ -248,9 +248,48 @@ def get_missing_block_single(wtid, col, cur_missing):
     end   = train[col].loc[cur_missing:].dropna(how='any').index.min() - 1
     return begin, end
 
+def enhance_self_file(miss_block_id,train,val_feature, model):
+    cur_blk = get_blocks().iloc[miss_block_id]
+    cur_col_name =  str(cur_blk.col)
 
-def get_train_df_by_val(miss_block_id, train,val_feature, window, drop_threshold, enable_time, file_num):
+    todo_col_list = [col for col in train.columns if col.endswith(f'_{cur_blk.wtid}')]
+    print(f'COl need to enhance:{todo_col_list}')
+
+    if model == 0: #Remove the column from cur_file
+        val_feature = val_feature.copy().drop(axis='column', columns=todo_col_list)
+        train = train.drop(axis='column', columns=todo_col_list)
+        #return train, val_feature
+    elif model == 1: #Fill, BFILL
+        for col in todo_col_list:
+            tmp = train[col].copy()
+            tmp.loc[val_feature.index] = None
+            tmp = tmp.fillna(method='ffill')
+            val_feature.loc[:, col] = tmp.loc[val_feature.index].values
+            #return train, val_feature
+    elif model == 2:
+        #TODO, base on all file or only predict file
+        pass
+    elif model == 3:
+        #TODO, base on all file or only predict file
+        pass
+
+    return train, val_feature
+
+
+
+
+def get_train_df_by_val(miss_block_id, train,val_feature, window, drop_threshold, enable_time, file_num, model=0):
+    """
+    :param model: 0: don't depend on current file: BASELINE
+                  1: ffill, bfill for current file: FOR TRAINING MODEL
+                  2: import from result file: FOR PREDICT MODEL
+                  3: Remove the column by threshold
+
+    """
     #local_args = locals()
+
+    train, val_feature = enhance_self_file(miss_block_id, train, val_feature, model)
+
     enable_time = enable_time > 0
     file_num = int(file_num)
     try:
@@ -471,7 +510,7 @@ def get_closed_columns(col_name, wtid=1, threshold=closed_ratio, remove_self=Fal
     #print(cor.shape, sub.shape)
 
     cor = pd.DataFrame(index=col_list, columns=col_list, data=cor)[col_name]
-    col_list = cor.loc[cor >= threshold].sort_values(ascending=False).index
+    col_list = cor.loc[(cor >= threshold) | (cor <= -threshold)].sort_values(ascending=False).index
     col_list = list(col_list)
 
     if remove_self:
@@ -537,17 +576,19 @@ def get_pure_block_list(kind='data'):
 
 
 def rename_col_for_merge_across_wtid(wtid, col_name, related_col_count):
-    col_list = [col_name, 'time_sn', 'time_slot_7']
+    col_list = set([col_name, 'time_sn', 'time_slot_7'])
     if related_col_count > 0:
+        #TODO wtid dynamic
         closed_col = get_closed_columns(col_name, 1, closed_ratio, remove_self=True) #rename_col_for_merge_across_wtid
         closed_col = list(closed_col.values)
         if len(closed_col) >0:
-            col_list.extend(closed_col[:related_col_count])
+            print(type(closed_col[:related_col_count]))
+            col_list.update(closed_col[:related_col_count])
 
-    train = get_train_ex(wtid)[col_list]
+    train = get_train_ex(wtid)[list(col_list)]
+    #print(train.columns)
     train.columns = [f'{col}_{wtid}' if 'var' in col else col for col in train.columns]
     return train
-
 
 @lru_cache()
 @file_cache()
@@ -584,10 +625,19 @@ def get_corr_wtid(col_name):
 @timed()
 @lru_cache(maxsize=32)
 def get_train_feature_multi_file(wtid, col, file_num, related_col_count):
+    """
+
+    :param wtid:
+    :param col:
+    :param file_num:
+    :param related_col_count:
+
+    :return:
+    """
     related_col_count = int(related_col_count)
     local_args = locals()
     file_num = int(file_num)
-    if file_num <1:
+    if file_num < 1:
         raise Exception(f'file_num should be large then 1, cur file_num is {file_num}, {local_args}')
     cor = get_corr_wtid(col)
     related_wtid_list = cor[f'{col}_{wtid}'].sort_values(ascending=False)[1:file_num]
@@ -595,18 +645,19 @@ def get_train_feature_multi_file(wtid, col, file_num, related_col_count):
                 f'{dict(zip(related_wtid_list.index,np.round(related_wtid_list.values,3)))}')
     related_wtid_list = [int(col.split('_')[1]) for col in related_wtid_list.index]
 
-    #Find data for original Wtid
-    train = rename_col_for_merge_across_wtid(wtid, col, related_col_count) #get_train_feature_multi_file
+    # Find data for original Wtid
+    train = rename_col_for_merge_across_wtid(wtid, col, related_col_count)  # get_train_feature_multi_file
 
     input_len = len(train)
-    #Rename back
-    train = train.rename(columns={f'{col}_{wtid}':col})
-    train['id']=train.index
+    # Rename back
+    train = train.rename(columns={f'{col}_{wtid}': col})
+    train['id'] = train.index
 
-    #Join the feature from other wtid
+    # Join the feature from other wtid
     for related_wtid in related_wtid_list:
-        #TODO
-        train_tmp = rename_col_for_merge_across_wtid(related_wtid, col, 0) #get_train_feature_multi_file
+        # TODO
+        train_tmp = rename_col_for_merge_across_wtid(related_wtid, col,
+                                                     related_col_count)  # get_train_feature_multi_file
         train_tmp = train_tmp.drop(axis='column', columns=['time_sn'])
         train = train.merge(train_tmp, how='left', on=['time_slot_7'])
         train = train.drop_duplicates(['id'])
@@ -614,8 +665,8 @@ def get_train_feature_multi_file(wtid, col, file_num, related_col_count):
     col_list = [col for col in train.columns if 'var' in col]
     col_list.append('time_sn')
     train = train[col_list]
-    #TODO replace with threshold
-    #train.iloc[:, 1:] = train.iloc[:,1:].fillna(method='ffill')
+    # TODO replace with threshold
+    # train.iloc[:, 1:] = train.iloc[:,1:].fillna(method='ffill')
 
     if len(train) != input_len:
         logger.exception(f"There are some row are missing for wtid:{wtid}, col:{col}, file_num:{file_num}")
@@ -628,7 +679,7 @@ def get_train_feature_multi_file(wtid, col, file_num, related_col_count):
 @lru_cache(maxsize=5)
 def get_train_val(miss_block_id, file_num, window,
                   related_col_count, drop_threshold, enable_time,
-                  shift, direct ):
+                  shift, direct , model=0):
     local_args = locals()
     logger.info(f'input get_train_val:{locals()}')
 
@@ -651,7 +702,7 @@ def get_train_val(miss_block_id, file_num, window,
 
     #Drop feature by drop_threshold
     train_df, val_df = get_train_df_by_val(miss_block_id, train.loc[b1:e3].copy(), val_df.copy(), window,
-                                   drop_threshold, enable_time, file_num,)
+                                   drop_threshold, enable_time, file_num, model)
 
     if pd.isna(val_df.iloc[:, 0]).any():
         logger.warning(f'Val LABEL has None for traning, blk:{miss_block_id}, window:{window}, shift:{shift}, {direct})')
