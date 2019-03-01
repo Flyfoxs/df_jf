@@ -194,6 +194,12 @@ def get_best_arg_by_blk(bin_id,col_name, class_name=None,direct=None, top=0):
 @timed()
 def get_args_missing_by_blk(original: pd.DataFrame, bin_id, col_name):
     exist_df = get_args_existing_by_blk(bin_id,col_name)
+
+    #Can not remove time_sn, if only 1 file
+    exist_df = exist_df
+    exist_df.loc[(exist_df.file_num == 1) & (exist_df.time_sn == 0), 'time_sn'] = 1
+    exist_df = exist_df.drop_duplicates()
+
     threshold = 0.99
     if exist_df is not None and len(exist_df) > 0 and exist_df.score_mean.max() >= threshold:
         max_score = exist_df.score_mean.max()

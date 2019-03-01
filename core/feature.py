@@ -582,7 +582,7 @@ def rename_col_for_merge_across_wtid(wtid, col_name, related_col_count):
         closed_col = get_closed_columns(col_name, wtid, closed_ratio, remove_self=True) #rename_col_for_merge_across_wtid
         closed_col = list(closed_col.values)
         if len(closed_col) >0:
-            print(type(closed_col[:related_col_count]))
+            #print(type(closed_col[:related_col_count]))
             col_list.update(closed_col[:related_col_count])
 
     train = get_train_ex(wtid)[list(col_list)]

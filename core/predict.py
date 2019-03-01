@@ -286,7 +286,7 @@ def process_blk_id(bin_col):
 
                     arg_list = get_args_missing_by_blk(todo, bin_id, col_name)
                     if len(arg_list) == 0:
-                        logger.warning(f'No missing arg is found from todo:{len(todo)} for blk:{blk_id}')
+                        logger.warning(f'No missing arg is found from todo:{len(todo)} for blk:{bin_col}')
                         return 0
 
                     score_list_binid = []
