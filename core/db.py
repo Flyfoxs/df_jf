@@ -195,10 +195,8 @@ def get_best_arg_by_blk(bin_id,col_name, class_name=None,direct=None, top=0):
 def get_args_missing_by_blk(original: pd.DataFrame, bin_id, col_name):
     exist_df = get_args_existing_by_blk(bin_id,col_name)
 
-    #Can not remove time_sn, if only 1 file
-    exist_df = exist_df
-    exist_df.loc[(exist_df.file_num == 1) & (exist_df.time_sn == 0), 'time_sn'] = 1
-    exist_df = exist_df.drop_duplicates()
+
+
 
     threshold = 0.99
     if exist_df is not None and len(exist_df) > 0 and exist_df.score_mean.max() >= threshold:
@@ -211,6 +209,9 @@ def get_args_missing_by_blk(original: pd.DataFrame, bin_id, col_name):
                                              'bin_id', 'count_blk', 'count_rec',
                                              'length_max', 'score_count'],errors='ignore' )
 
+    #Can not remove time_sn, if only 1 file
+    original.loc[(original.file_num == 1) & (original.time_sn == 0), 'time_sn'] = 1
+    original = original.drop_duplicates()
 
     if len(exist_df) == 0 :
         return original
@@ -225,5 +226,5 @@ def get_args_missing_by_blk(original: pd.DataFrame, bin_id, col_name):
 
 def get_existing_blk():
     db = get_connect()
-    sql = f""" select distinct blk_id from score_list order by blk_id"""
+    sql = f""" select distinct blk_id from score_list where version = {version} order by blk_id"""
     return pd.read_sql(sql, db).iloc[:,0]

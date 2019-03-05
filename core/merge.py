@@ -72,7 +72,7 @@ def get_existing_blks():
     return dict(file_map)
 
 if __name__ == '__main__':
-    # gen_best()
+    gen_best()
     merge_file()
 
 

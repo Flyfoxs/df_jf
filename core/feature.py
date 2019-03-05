@@ -20,7 +20,7 @@ from file_cache.utils.other import replace_useless_mark
 
 from glob import glob
 
-closed_ratio = 0.85
+closed_ratio = 0.5
 
 def get_predict_col():
     col_list = [col for col in list(date_type.keys()) if 'var' in col]
@@ -253,18 +253,24 @@ def enhance_self_file(miss_block_id,train,val_feature, model):
     cur_col_name =  str(cur_blk.col)
 
     todo_col_list = [col for col in train.columns if col.endswith(f'_{cur_blk.wtid}')]
-    print(f'COl need to enhance:{todo_col_list}')
+    if len(todo_col_list) > 0 and model > 0:
+        logger.info(f'model:{model}, enhance_self_file for col_list:{todo_col_list}')
 
     if model == 0: #Remove the column from cur_file
         val_feature = val_feature.copy().drop(axis='column', columns=todo_col_list)
         train = train.drop(axis='column', columns=todo_col_list)
         #return train, val_feature
     elif model == 1: #Fill, BFILL
-        for col in todo_col_list:
-            tmp = train[col].copy()
-            tmp.loc[val_feature.index] = None
-            tmp = tmp.fillna(method='ffill')
-            val_feature.loc[:, col] = tmp.loc[val_feature.index].values
+        val_feature = val_feature.copy().drop(axis='column', columns=todo_col_list)
+        train = train.drop(axis='column', columns=todo_col_list)
+        length = cur_blk.length
+        shift_len = 50
+        if length <= shift_len:
+            for reverse in [1, -1] :
+                new_col = f'{cur_col_name}_sf_{shift_len}_{reverse}'
+                tmp = train[cur_col_name].copy()
+                train[new_col] = tmp.shift(shift_len).fillna(method='ffill')
+                val_feature[new_col] = train.loc[val_feature.index, new_col].values
             #return train, val_feature
     elif model == 2:
         #TODO, base on all file or only predict file
@@ -272,6 +278,9 @@ def enhance_self_file(miss_block_id,train,val_feature, model):
     elif model == 3:
         #TODO, base on all file or only predict file
         pass
+    elif model == 4:
+        pass
+        #TODO, Extend the feature by it self, shift
 
     return train, val_feature
 
@@ -510,7 +519,7 @@ def get_closed_columns(col_name, wtid, threshold=closed_ratio, remove_self=False
     #print(cor.shape, sub.shape)
 
     cor = pd.DataFrame(index=col_list, columns=col_list, data=cor)[col_name]
-    col_list = cor.loc[(cor >= threshold) | (cor <= -threshold)].sort_values(ascending=False).index
+    col_list = cor.loc[abs(cor) >= threshold].sort_values(ascending=False).index
     col_list = list(col_list)
 
     if remove_self:

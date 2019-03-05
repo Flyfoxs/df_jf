@@ -244,7 +244,7 @@ def gen_best_sub(best_arg):
     train, sub = get_train_df_by_val(miss_block_id, train, sub,
                                      best_arg.window,
                                      best_arg.drop_threshold,
-                                     best_arg.time_sn, best_arg.file_num, model=3)
+                                     best_arg.time_sn, best_arg.file_num, model=0)
 
 
     predict_fn = get_predict_fun(train, best_arg)

@@ -204,13 +204,14 @@ def check_score_all():
 
 
 @file_cache()
-def estimate_score(direct, class_name):
-    blk_list = get_blocks()
-    blk_list = blk_list.loc[blk_list.wtid == 1]
+def estimate_score():
+    # blk_list = get_blocks()
+    # blk_list = blk_list.loc[blk_list.wtid == 1]
     df = pd.DataFrame()
-    for blk_id in blk_list.index:
-        arg = get_best_arg_by_blk(blk_id,class_name=class_name,direct=direct)
-        df = df.append(arg)
+    for bin_id in range(10):
+        for col_name in get_predict_col():
+            arg = get_best_arg_by_blk(bin_id,col_name, class_name='lr',direct='down')
+            df = df.append(arg)
     return df
 
 def get_high_priority_col(top_n):
@@ -607,6 +608,10 @@ def get_args_extend(best :pd.Series, para_name=None ):
             tmp = best.copy()
             tmp.file_num = max(1,old_val + ratio)
             args = args.append(tmp)
+        for file in range(1,5):
+            tmp = best.copy()
+            tmp.file_num=file
+            args = args.append(tmp)
 
     if 'window' in para_name_list:
         old_val = best.window
@@ -628,6 +633,11 @@ def get_args_extend(best :pd.Series, para_name=None ):
             tmp = best.copy()
             tmp.window = min(6,max(0.05,window_new))
             args = args.append(tmp)
+        for window in range(1,5):
+            tmp = best.copy()
+            tmp.window=window
+            args = args.append(tmp)
+
     if 'momenta_impact' in para_name_list:
         for ratio in [-2, -1, 1, 2]:
             tmp = best.copy()
@@ -640,7 +650,12 @@ def get_args_extend(best :pd.Series, para_name=None ):
         old_val = best.drop_threshold
         for ratio in [-3, -2, -1, 1, 2]:
             tmp = best.copy()
-            tmp.drop_threshold = min(0.99,max(0.4,old_val + ratio*0.05))
+            tmp.drop_threshold = min(1,max(0.4,old_val + ratio*0.05))
+            args = args.append(tmp)
+
+        for drop_threshold in np.arange(0.6, 1, 0.1):
+            tmp = best.copy()
+            tmp.drop_threshold=round(drop_threshold, 1)
             args = args.append(tmp)
 
     if 'time_sn' in para_name_list:
