@@ -204,13 +204,15 @@ def check_score_all():
 
 
 @file_cache()
-def estimate_score():
+def estimate_score(version):
     # blk_list = get_blocks()
     # blk_list = blk_list.loc[blk_list.wtid == 1]
     df = pd.DataFrame()
     for bin_id in range(10):
+        from core.merge_multiple_file import select_col
+        logger.info(f'bin_id:{bin_id} is done')
         for col_name in get_predict_col():
-            arg = get_best_arg_by_blk(bin_id,col_name, class_name='lr',direct='down')
+            arg = get_best_arg_by_blk(bin_id,col_name, class_name='lr',direct='down', shift=0)
             df = df.append(arg)
     return df
 
@@ -613,7 +615,7 @@ def get_args_extend(best :pd.Series, para_name=None ):
             tmp.file_num=file
             args = args.append(tmp)
 
-    if 'window' in para_name_list:
+    if 'window' in para_name_list and best.momenta_impact < 0.5:
         old_val = best.window
         for ratio in [-2, -1, 1, 2, 4]:
             if old_val >= 2:
@@ -621,7 +623,7 @@ def get_args_extend(best :pd.Series, para_name=None ):
             elif old_val >= 1:
                 step = 0.4
             else:
-                step=0.2
+                step=0.1
 
             window_new = max(0.1,old_val + (ratio*step))
             if window_new > 1:#Increase 0.5
@@ -638,15 +640,7 @@ def get_args_extend(best :pd.Series, para_name=None ):
             tmp.window=window
             args = args.append(tmp)
 
-    if 'momenta_impact' in para_name_list:
-        for ratio in [-2, -1, 1, 2]:
-            tmp = best.copy()
-            momenta_impact = tmp.momenta_impact
-            momenta_impact = momenta_impact + ratio * 0.05
-            tmp.momenta_impact =min(0.5, max(0,momenta_impact))
-            args = args.append(tmp)
-
-    if 'drop_threshold' in para_name_list:
+    if 'drop_threshold' in para_name_list and best.momenta_impact < 0.5:
         old_val = best.drop_threshold
         for ratio in [-3, -2, -1, 1, 2]:
             tmp = best.copy()
@@ -657,6 +651,15 @@ def get_args_extend(best :pd.Series, para_name=None ):
             tmp = best.copy()
             tmp.drop_threshold=round(drop_threshold, 1)
             args = args.append(tmp)
+
+    if 'momenta_impact' in para_name_list:
+        for ratio in [-2, -1, 1, 2]:
+            tmp = best.copy()
+            momenta_impact = tmp.momenta_impact
+            momenta_impact = momenta_impact + ratio * 0.05
+            tmp.momenta_impact =min(0.5, max(0,momenta_impact))
+            args = args.append(tmp)
+
 
     if 'time_sn' in para_name_list:
         for time_sn in [0, 1]:

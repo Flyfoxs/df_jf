@@ -1,4 +1,5 @@
 import mysql.connector
+import mysqlx
 from core.feature import *
 
 
@@ -30,6 +31,17 @@ def get_connect():
                                  host='vm-ai-2',
                                  database='ai')
     return db
+
+def get_session():
+    session = mysqlx.get_session({
+        'host': 'vm-ai-2.cisco.com',
+        #'port': 3306,
+        'user': 'ai_lab',
+        'password': 'Had00p!!',
+        'schema': 'ai'
+    })
+
+    return session
 
 @timed()
 def check_last_time_by_binid(bin_id,col_name, threshold):
@@ -97,6 +109,7 @@ def insert(score_ind):
             n_estimators,
             max_depth,
             length ,
+            shift,
             time_begin,
             time_end,
             server,
@@ -122,6 +135,7 @@ def insert(score_ind):
             {n_estimators},
             {max_depth},
             {length},
+            {shift},
             {time_begin},
             {time_end},
             '{server}',
@@ -134,7 +148,7 @@ def insert(score_ind):
     db.commit()
 
 @lru_cache(maxsize=16)
-def get_args_existing_by_blk(bin_id, col_name, class_name=None, direct=None):
+def get_args_existing_by_blk(bin_id, col_name, class_name=None, direct=None, shift=0):
     db = get_connect()
     class_name = 'null' if class_name is None else f"'{class_name}'"
     direct = 'null' if direct is None else f"'{direct}'"
@@ -159,6 +173,7 @@ def get_args_existing_by_blk(bin_id, col_name, class_name=None, direct=None):
                                 and class_name=ifnull({class_name}, class_name)
                                 and direct=ifnull({direct}, direct)  
                                 and version={version}
+                                and shift={shift}
                         group by
                         class_name, 
                         col_name,
@@ -181,8 +196,8 @@ def get_args_existing_by_blk(bin_id, col_name, class_name=None, direct=None):
     return exist_df
 
 
-def get_best_arg_by_blk(bin_id,col_name, class_name=None,direct=None, top=0):
-    args = get_args_existing_by_blk(bin_id, col_name, class_name,direct)
+def get_best_arg_by_blk(bin_id,col_name, class_name=None,direct=None, top=0, shift=0):
+    args = get_args_existing_by_blk(bin_id, col_name, class_name,direct, shift)
     if args is not None and len(args)>1:
         args = args.reset_index().sort_values(['score_mean'], ascending=[False])#.head(10)
         #args = args.sort_values('score_std')
@@ -192,16 +207,13 @@ def get_best_arg_by_blk(bin_id,col_name, class_name=None,direct=None, top=0):
         return None
 
 @timed()
-def get_args_missing_by_blk(original: pd.DataFrame, bin_id, col_name):
-    exist_df = get_args_existing_by_blk(bin_id,col_name)
-
-
-
+def get_args_missing_by_blk(original: pd.DataFrame, bin_id, col_name, shift):
+    exist_df = get_args_existing_by_blk(bin_id,col_name, shift)
 
     threshold = 0.99
     if exist_df is not None and len(exist_df) > 0 and exist_df.score_mean.max() >= threshold:
         max_score = exist_df.score_mean.max()
-        logger.info(f'blkid:{blk_id}, col:{exist_df.at[1, "col_name"]}, already the socre:{round(max_score,4)}')
+        logger.info(f'bin_id:{bin_id}, col:{exist_df.at[1, "col_name"]}, already the socre:{round(max_score,4)}')
         return exist_df.loc[pd.isna(exist_df.index)]
 
     original = original.copy().drop(axis='column' ,

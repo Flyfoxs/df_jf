@@ -259,7 +259,6 @@ def enhance_self_file(miss_block_id,train,val_feature, model):
     if model == 0: #Remove the column from cur_file
         val_feature = val_feature.copy().drop(axis='column', columns=todo_col_list)
         train = train.drop(axis='column', columns=todo_col_list)
-        #return train, val_feature
     elif model == 1: #Fill, BFILL
         val_feature = val_feature.copy().drop(axis='column', columns=todo_col_list)
         train = train.drop(axis='column', columns=todo_col_list)
@@ -271,7 +270,6 @@ def enhance_self_file(miss_block_id,train,val_feature, model):
                 tmp = train[cur_col_name].copy()
                 train[new_col] = tmp.shift(shift_len).fillna(method='ffill')
                 val_feature[new_col] = train.loc[val_feature.index, new_col].values
-            #return train, val_feature
     elif model == 2:
         #TODO, base on all file or only predict file
         pass
@@ -394,6 +392,7 @@ def get_train_df_by_val(miss_block_id, train,val_feature, window, drop_threshold
             del train_feature['time_sn']
             del val_feature['time_sn']
 
+        ##TODO drop the column with low related
         col_list_other_file = [item for item in train_feature.columns if cur_col in item]
         if len(col_list_other_file) > file_num :
             remove_list = col_list_other_file[file_num:]

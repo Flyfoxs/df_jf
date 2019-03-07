@@ -1,6 +1,10 @@
 
 from core.feature import *
 from core.predict import *
+from core.merge_multiple_file import *
+
+
+
 
 
 
@@ -44,7 +48,7 @@ def gen_best():
     arg_list = []
     for col_name in imp_list:
         for bin_id in range(10):
-            best = get_best_arg_by_blk(bin_id, col_name, 'lr', None)
+            best = get_best_arg_by_blk(bin_id, col_name, 'lr', 'down', shift=0) #gen_best
             blk_list = get_miss_blocks_ex()
             blk_list = blk_list.loc[
                 (blk_list.kind=='missing') &
@@ -72,7 +76,9 @@ def get_existing_blks():
     return dict(file_map)
 
 if __name__ == '__main__':
-    gen_best()
-    merge_file()
+    pass
+    # gen_best()
+    # merge_file()
+    #merge_diff_col()
 
 

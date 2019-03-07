@@ -261,7 +261,8 @@ def gen_best_sub(best_arg):
 
 @timed()
 def process_blk_id(bin_col):
-    bin_id, col_name = bin_col
+    bin_id, col_name, shift = bin_col
+    direct = 'down'
     from core.check import check_options, get_miss_blocks_ex
 
     #wtid = cur_block.wtid
@@ -279,12 +280,14 @@ def process_blk_id(bin_col):
                     from core.check import get_args_all, get_args_extend
 
                     todo = get_args_all(col_name)
-                    best = get_best_arg_by_blk(bin_id, col_name, class_name)
+                    best = get_best_arg_by_blk(bin_id, col_name, class_name,direct, shift=shift)
                     if best is not None and len(best) > 0 : # and cur_block.length > 10:
                         extend_args = get_args_extend(best)
                         todo = pd.concat([todo, extend_args])
 
-                    arg_list = get_args_missing_by_blk(todo, bin_id, col_name)
+                    arg_list = get_args_missing_by_blk(todo, bin_id, col_name, shift)
+
+                    arg_list['shift'] = shift
                     if len(arg_list) == 0:
                         logger.warning(f'No missing arg is found from todo:{len(todo)} for blk:{bin_col}')
                         return 0
@@ -321,12 +324,28 @@ def process_blk_id(bin_col):
 
 @timed()
 def main():
+    shift = 0
     from core.check import get_miss_blocks_ex
 
     from multiprocessing import Pool as ThreadPool  # 进程
 
 
     imp_list =  ['var042', 'var046', 'var004', 'var027', 'var034', 'var043', 'var068', 'var003', 'var052', 'var040', 'var056', 'var024']
+
+    imp_list = ['var029',
+'var022',
+'var001',
+'var005',
+'var038',
+'var006',
+'var055',
+'var051',
+'var011',
+'var057',
+'var018',
+'var062',
+'var037',
+'var060',]
 
     blk_list = get_miss_blocks_ex()
     blk_list = blk_list.loc[#(blk_list.kind=='missing') &
@@ -335,7 +354,7 @@ def main():
 
     para_list = set([])
     for sn, row in blk_list.iterrows():
-        para_list.add((row.bin_id, row.col))
+        para_list.add((row.bin_id, row.col, shift))
 
     try:
         pool = ThreadPool(10)

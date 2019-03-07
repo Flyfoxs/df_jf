@@ -44,6 +44,7 @@ config={
 
 }
 
+select_col = list(config.keys())
 
 def merge_diff_col(base_file='./output/0.70180553000.csv', ):
     base = pd.read_csv(base_file)
