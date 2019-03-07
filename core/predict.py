@@ -193,7 +193,7 @@ def predict_block_id(miss_block_id, arg):
     train_df, val_df, data_blk_id = \
         get_train_val(miss_block_id, arg.file_num, round(arg.window,2),
                       arg.related_col_count, arg.drop_threshold,
-                      arg.time_sn, 0, arg.direct, model=0)
+                      arg.time_sn, arg.shift, arg.direct, model=0)
     if data_blk_id<0:
         logger.warning(f'Can not find closed block for :{replace_useless_mark(arg)}')
         return None
@@ -280,7 +280,8 @@ def process_blk_id(bin_col):
                     from core.check import get_args_all, get_args_extend
 
                     todo = get_args_all(col_name)
-                    best = get_best_arg_by_blk(bin_id, col_name, class_name,direct, shift=shift)
+                    #Shift always zero, so other shift can reuse the best args from shift#0
+                    best = get_best_arg_by_blk(bin_id, col_name, class_name,direct, shift=0)
                     if best is not None and len(best) > 0 : # and cur_block.length > 10:
                         extend_args = get_args_extend(best)
                         todo = pd.concat([todo, extend_args])
@@ -330,23 +331,8 @@ def main():
     from multiprocessing import Pool as ThreadPool  # 进程
 
 
-    imp_list =  ['var042', 'var046', 'var004', 'var027', 'var034', 'var043', 'var068', 'var003', 'var052', 'var040', 'var056', 'var024']
-
-    imp_list = ['var029',
-'var022',
-'var001',
-'var005',
-'var038',
-'var006',
-'var055',
-'var051',
-'var011',
-'var057',
-'var018',
-'var062',
-'var037',
-'var060',]
-
+    from core.merge_multiple_file import select_col
+    imp_list =  select_col
     blk_list = get_miss_blocks_ex()
     blk_list = blk_list.loc[#(blk_list.kind=='missing') &
                             #(blk_list.wtid==1) &
