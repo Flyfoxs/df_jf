@@ -33,16 +33,21 @@ def merge_file(base_file = './output/0.67917234.csv'):
         #print(score_all[:3])
 
     base_df = convert_enum(base_df)
-    file = f'./output/merge_4.csv'
-    logger.info(f'Merge file save to:{file}')
+    from core.merge_multiple_file import select_col
+    file = f"./output/merge_{len(select_col)}_{'_'.join(select_col[-2:])}.csv"
     base_df.iloc[:, :70].to_csv(file, index=None)
+    logger.info(f'Merge file save to:{file}')
     return base_df.iloc[:, :70]
 
 @timed()
 def gen_best():
     from multiprocessing import Pool as ThreadPool
 
-    imp_list =  ['var042', 'var046', 'var004', 'var027', 'var034', 'var043', 'var068', 'var003', 'var052', 'var040', 'var056', 'var024']
+    #imp_list =  ['var042', 'var046', 'var004', 'var027', 'var034', 'var043', 'var068', 'var003', 'var052', 'var040', 'var056', 'var024']
+    from core.merge_multiple_file import select_col
+    imp_list = select_col
+    logger.info(f'There are {len(imp_list)} col need to gen_result:{imp_list}')
+
     from core.check import get_miss_blocks_ex
 
     arg_list = []
@@ -54,6 +59,9 @@ def gen_best():
                 (blk_list.kind=='missing') &
                 (blk_list.bin_id==bin_id) &
                 (blk_list.col==col_name)]
+            if best is None:
+                logger.warning(f'Can not get arg for:bin_id:{bin_id}, {col_name}, and the block length is:{len(blk_list)}')
+                continue
             for blk_id in blk_list.index:
                 best = best.copy()
                 best['blk_id']  =blk_id
@@ -76,9 +84,8 @@ def get_existing_blks():
     return dict(file_map)
 
 if __name__ == '__main__':
-    pass
-    # gen_best()
-    # merge_file()
+    #gen_best()
+    merge_file()
     #merge_diff_col()
 
 

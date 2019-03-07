@@ -9,7 +9,7 @@ from core.feature import *
 import contextlib
 
 
-version = 1
+version = 2
 @contextlib.contextmanager
 def named_lock(db_session, name, timeout):
     """Get a named mysql lock on a DB session
@@ -147,7 +147,7 @@ def insert(score_ind):
     cur.execute(sql )
     db.commit()
 
-@lru_cache(maxsize=16)
+
 def get_args_existing_by_blk(bin_id, col_name, class_name=None, direct=None, shift=0):
     db = get_connect()
     class_name = 'null' if class_name is None else f"'{class_name}'"
@@ -208,7 +208,7 @@ def get_best_arg_by_blk(bin_id,col_name, class_name=None,direct=None, top=0, shi
 
 @timed()
 def get_args_missing_by_blk(original: pd.DataFrame, bin_id, col_name, shift):
-    exist_df = get_args_existing_by_blk(bin_id,col_name, shift)
+    exist_df = get_args_existing_by_blk(bin_id,col_name, shift=shift)
 
     threshold = 0.99
     if exist_df is not None and len(exist_df) > 0 and exist_df.score_mean.max() >= threshold:

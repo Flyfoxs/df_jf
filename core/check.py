@@ -12,7 +12,7 @@ import fire
 from core.predict import *
 
 @file_cache()
-def get_miss_blocks_ex():
+def get_miss_blocks_ex(bins=10):
     blks = get_blocks()
     blks['bin_des'] = None
     blks['bin_id'] = None
@@ -26,7 +26,7 @@ def get_miss_blocks_ex():
 
         # blks_tmp.bin_des.value_counts().sort_index()
 
-        blks_tmp['bin_id'] = pd.cut(blks_tmp.length, 10).cat.codes
+        blks_tmp['bin_id'] = pd.cut(blks_tmp.length, bins).cat.codes
         bk_list.append(blks_tmp)
     blks = pd.concat(bk_list)
     return blks
@@ -683,7 +683,7 @@ def check_options():
     #parser.add_argument("--bin_id", type=int, default=10)
     parser.add_argument("--check_gap", type=int, default=15, help="Mins to lock the score file")
     parser.add_argument("--gp_name", type=str, default='lr_bin_9', help="The folder name to save score")
-    parser.add_argument("--shift", type=float, default=0.0,  help="The folder name to save score")
+    parser.add_argument("--shift", type=int, default=0,  help="The folder name to save score")
 
     parser.add_argument("--class_name", type=str, default='lr', help="The folder name to save score")
 

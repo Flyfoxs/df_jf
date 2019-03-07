@@ -193,7 +193,7 @@ def predict_block_id(miss_block_id, arg):
     train_df, val_df, data_blk_id = \
         get_train_val(miss_block_id, arg.file_num, round(arg.window,2),
                       arg.related_col_count, arg.drop_threshold,
-                      arg.time_sn, arg.shift, arg.direct, model=0)
+                      arg.time_sn, arg['shift'], arg.direct, model=0)
     if data_blk_id<0:
         logger.warning(f'Can not find closed block for :{replace_useless_mark(arg)}')
         return None
@@ -288,7 +288,7 @@ def process_blk_id(bin_col):
 
                     arg_list = get_args_missing_by_blk(todo, bin_id, col_name, shift)
 
-                    arg_list['shift'] = shift
+
                     if len(arg_list) == 0:
                         logger.warning(f'No missing arg is found from todo:{len(todo)} for blk:{bin_col}')
                         return 0
@@ -306,6 +306,7 @@ def process_blk_id(bin_col):
                         arg_list['blk_id'] = blk_id
                         arg_list['wtid'] = cur_block.wtid
                         arg_list['direct'] = 'down'
+                        arg_list['shift'] = int(shift)
 
                         # logger.info(arg_list)
                         logger.info(f'There are {len(arg_list):02} args for bin:{bin_col}, blk:{blk_id:06},{sn:03}/{len(miss):03}')
@@ -325,7 +326,10 @@ def process_blk_id(bin_col):
 
 @timed()
 def main():
-    shift = 0
+    from core.check import check_options
+    shift = int(check_options().shift)
+
+    logger.info(f'Program begin with shift:{shift}')
     from core.check import get_miss_blocks_ex
 
     from multiprocessing import Pool as ThreadPool  # 进程
@@ -364,6 +368,8 @@ if __name__ == '__main__':
 
     """
     nohup python ./core/predict.py > predict_2.log 2>&1 &
+    
+    nohup python ./core/predict.py 1 > predict_1.log 2>&1 &
     """
 
 
