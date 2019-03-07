@@ -6,9 +6,9 @@ date
 #rsync -av  hdpsbp@ai-prd-07:/users/hdpsbp/bk/df_jf/cache ./
 
 
-#rsync -av  hdpsbp@ai-prd-05:/users/hdpsbp/felix/df_jf/output/*.zip ./output
+rsync -av  hdpsbp@ai-prd-05:/users/hdpsbp/felix/df_jf/output/*.zip ./output
 
-rsync -av  hdpsbp@ai-prd-05:/users/hdpsbp/felix/df_jf/output/merge*.csv ./output
+rsync -av  hdpsbp@ai-prd-05:/users/hdpsbp/felix/df_jf/output/merge*var*.csv ./output
 
 
 #rsync -av  hdpsbp@ai-prd-05:/users/hdpsbp/felix/df_jf/output/*0218*.csv ./output

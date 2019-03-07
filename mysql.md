@@ -11,3 +11,8 @@ vi /etc/my.cnf
 
 set password for 'root'@'localhost'=password('Had00p!!'); 
 systemctl stop firewalld
+
+
+mysql x 
+#https://dev.mysql.com/doc/refman/5.7/en/document-store-setting-up.html
+mysqlsh -u root -h localhost --classic --dba enableXProtocol

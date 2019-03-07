@@ -11,3 +11,4 @@ fi
 
 date
 
+#rsync -av  ./output/0.70180553000.csv hdpsbp@ai-prd-07:/users/hdpsbp/felix/output

@@ -9,7 +9,7 @@ from core.feature import *
 import contextlib
 
 
-version = 2
+version = 3
 @contextlib.contextmanager
 def named_lock(db_session, name, timeout):
     """Get a named mysql lock on a DB session

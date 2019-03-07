@@ -25,6 +25,7 @@ max_depth int,
 time_begin int,
 time_end int,
 length int,
+shift int,
 version varchar(16),
 ct     TIMESTAMP DEFAULT NOW()
 );

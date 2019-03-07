@@ -11,8 +11,9 @@ import fire
 
 from core.predict import *
 
-@file_cache()
-def get_miss_blocks_ex(bins=10):
+@lru_cache()
+def get_miss_blocks_ex():
+    bins=check_options().bin_count
     blks = get_blocks()
     blks['bin_des'] = None
     blks['bin_id'] = None
@@ -20,12 +21,6 @@ def get_miss_blocks_ex(bins=10):
     for col_name in get_predict_col():
         blks_tmp = blks.loc[(blks.kind == 'missing')]
         blks_tmp = blks_tmp.loc[(blks.col == col_name) & (blks.kind == 'missing')]  # & (blks.wtid==1)
-        # blks.length.sort_values().reset_index(drop=True).plot()
-
-        #blks_tmp['bin_des'] = pd.cut(blks_tmp.length, 10)
-
-        # blks_tmp.bin_des.value_counts().sort_index()
-
         blks_tmp['bin_id'] = pd.cut(blks_tmp.length, bins).cat.codes
         bk_list.append(blks_tmp)
     blks = pd.concat(bk_list)
@@ -679,7 +674,7 @@ def check_options():
     import argparse
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--bin_count", type=int, default=10, help="How many bins will split for each column")
+    parser.add_argument("--bin_count", type=int, default=9, help="How many bins will split for each column")
     #parser.add_argument("--bin_id", type=int, default=10)
     parser.add_argument("--check_gap", type=int, default=15, help="Mins to lock the score file")
     parser.add_argument("--gp_name", type=str, default='lr_bin_9', help="The folder name to save score")
