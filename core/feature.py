@@ -25,52 +25,6 @@ closed_ratio = 0.5
 def get_predict_col():
     col_list = [col for col in list(date_type.keys()) if 'var' in col]
     return sorted(col_list)
-#
-# @file_cache()
-# def get_input_analysis(gp_type='missing'):
-#     df = pd.DataFrame()
-#
-#     for wtid in range(1, 34):
-#         wtid = str(wtid)
-#         train = pd.read_csv(f"./input/{wtid.rjust(3,'0')}/201807.csv")
-#         logger.debug(f'================{wtid}================')
-#         logger.debug(f'{train.shape}, {train.wtid.min()}, {train.wtid.max()}')
-#         summary = {}
-#         for col in train:
-#             if gp_type == 'missing':
-#                 summary[col] = int(pd.isna(train[col]).sum())
-#             elif gp_type =='max':
-#                 summary[col] = train[col].max()
-#             elif gp_type == 'min':
-#                 summary[col] = train[col].min()
-#             elif gp_type == 'nunique':
-#                 summary[col] = train[col].nunique()
-#             else:
-#                 raise Exception('Unknown gp_type:%s' % gp_type)
-#
-#         summary['wtid'] = wtid
-#         summary['total'] =  len(train)
-#         #logger.debug(summary)
-#         df = df.append(summary, ignore_index=True)
-#     return df
-
-#
-# def get_analysis_enum():
-#     col_list = ['wtid','var053','var066','var016','var020','var047',  ]
-#
-#     train_list = []
-#     for wtid in range(1, 34):
-#         wtid = str(wtid)
-#         train = pd.read_csv(f"./input/{wtid.rjust(3,'0')}/201807.csv", usecols=col_list)
-#         train = train.groupby(col_list).agg({'wtid':'count'})
-#         train.rename(index=str, columns={"wtid": "count"}, inplace=True)
-#         train = train.reset_index()
-#         #print(train.shape)
-#         train_list.append(train)
-#
-#     all = pd.concat(train_list)
-#     return all
-
 
 @lru_cache()
 @file_cache()
@@ -79,7 +33,7 @@ def get_sub_template():
     template.ts = pd.to_datetime(template.ts)
     template = template.set_index(['ts', 'wtid'])
 
-    for wtid in range(1, 34):
+    for wtid in range(1, count_wtid):
         wtid = str(wtid)
         train = pd.read_csv(f"./input/{wtid.rjust(3,'0')}/201807.csv")
         #train = pd.read_csv('./input/001/201807.csv')
@@ -90,6 +44,21 @@ def get_sub_template():
         logger.debug(f'wtid={wtid}, {template.shape}, {train.shape},')
     template = template.reset_index()
     template = template.sort_values(['wtid', 'ts', ])
+    return template
+
+@file_cache()
+@file_cache()
+def get_template_with_position():
+    template = get_sub_template()
+    template.ts = pd.to_datetime(template.ts)
+    template['index_ex'] = None
+    for wtid in range(1, count_wtid):
+        tmp = get_train_ex(wtid)[['wtid', 'ts']]
+        tmp['index_ex_tmp'] = tmp.index
+        tmp.ts = pd.to_datetime(tmp.ts)
+        tmp = tmp.merge(template, on=['wtid', 'ts'])
+        print(f'Merge res:{tmp.shape} for wtid:{wtid}')
+        template.loc[(template.wtid==wtid), 'index_ex'] =  tmp.index_ex_tmp.values
     return template
 
 
@@ -138,7 +107,7 @@ def get_missing_block_all():
     columns = list(date_type.keys())
     columns.remove('wtid')
     columns = sorted(columns)
-    for wtid in sorted(range(1, 34), reverse=True):
+    for wtid in sorted(range(1, count_wtid), reverse=True):
         for col in columns:
             for begin, end in get_missing_block_for_col(wtid, col):
                 df = df.append({'wtid':wtid, 'col':col,
@@ -150,7 +119,7 @@ def get_missing_block_all():
 def get_data_block_all():
     missing = get_missing_block_all()
     df_list = []
-    for wtid in range(1, 34):
+    for wtid in range(1, count_wtid):
         for col in missing.col.drop_duplicates():
             df_tmp = missing.loc[(missing.wtid == wtid) & (missing.col == col)]
             missing_end = df_tmp.end.max()
@@ -198,7 +167,7 @@ def get_blocks():
     all['time_begin'] = None
     all['time_end'] = None
 
-    for wtid in range(1, 34):
+    for wtid in range(1, count_wtid):
         df = get_train_ex(wtid)
         all.loc[all.wtid == wtid, 'time_begin'] = df.loc[all.loc[all.wtid == wtid].begin, 'time_slot_7'].values
         all.loc[all.wtid == wtid, 'time_end'] = df.loc[all.loc[all.wtid == wtid].end, 'time_slot_7'].values
@@ -432,7 +401,7 @@ def get_std_all():
     columns = list(date_type.keys())
     columns.remove('wtid')
     columns = sorted(columns)
-    for wtid in sorted(range(1, 34), reverse=True):
+    for wtid in sorted(range(1, count_wtid), reverse=True):
         for col in columns:
             std_sample =  check_std(wtid,col)
             df = df.append(std_sample,ignore_index=True)
@@ -521,7 +490,8 @@ def get_closed_columns(col_name, wtid, threshold=closed_ratio, remove_self=False
     col_list = cor.loc[abs(cor) >= threshold].sort_values(ascending=False).index
     col_list = list(col_list)
 
-    if remove_self:
+    #IF the whole columns is same value, col_name remove before this
+    if remove_self and col_name in col_list:
         col_list.remove(col_name)
 
     return pd.Series(col_list)
@@ -531,7 +501,7 @@ def get_closed_columns(col_name, wtid, threshold=closed_ratio, remove_self=False
 @file_cache()
 def get_pure_block_list(kind='data'):
     df = pd.DataFrame()
-    for wtid in range(1, 34):
+    for wtid in range(1, count_wtid):
         train = get_train_ex(wtid)
         #print(train.shape)
         if kind == 'data':
@@ -603,7 +573,7 @@ def rename_col_for_merge_across_wtid(wtid, col_name, related_col_count):
 def get_corr_wtid(col_name):
     train = rename_col_for_merge_across_wtid(1, col_name, 0) #get_corr_wtid
 
-    for wtid in range(2, 34):
+    for wtid in range(2, count_wtid):
         train_tmp = rename_col_for_merge_across_wtid(wtid, col_name, 0) #get_corr_wtid
         train = train.merge(train_tmp, on=['time_slot_7'])
         train = train.drop_duplicates('time_slot_7')
@@ -968,6 +938,7 @@ def get_max_related_ration(wtid, col_name):
 if __name__ == '__main__':
     pass
     # get_closed_col_ratio_df()
+    get_template_with_position()
 
 
 

@@ -271,47 +271,49 @@ def process_blk_id(bin_col):
     lock_mins = 10
     try:
         with factory.create_lock(bin_col, ttl=1000*60 *lock_mins):
+                is_continue = check_last_time_by_binid(bin_id, col_name, lock_mins)
+                if not is_continue:
+                    logger.warning(f'The binid#{bin_col} is still in processed in {lock_mins} mins')
+                    return 'In processing'
+
                 try:
-
-                    is_continue = check_last_time_by_binid(bin_id,col_name,lock_mins)
-                    if not is_continue:
-                        logger.warning(f'The binid#{bin_col} is still in processed in {lock_mins} mins')
-                        return 'In processing'
-                    from core.check import get_args_all, get_args_extend
-
-                    todo = get_args_all(col_name)
-                    #Shift always zero, so other shift can reuse the best args from shift#0
-                    best = get_best_arg_by_blk(bin_id, col_name, class_name,direct, shift=0)
-                    if best is not None and len(best) > 0 : # and cur_block.length > 10:
-                        extend_args = get_args_extend(best)
-                        todo = pd.concat([todo, extend_args])
-
-                    arg_list = get_args_missing_by_blk(todo, bin_id, col_name, shift)
-
-
-                    if len(arg_list) == 0:
-                        logger.warning(f'No missing arg is found from todo:{len(todo)} for blk:{bin_col}')
-                        return 0
-
                     score_list_binid = []
-                    #Estimate by blk_list
-                    miss = get_miss_blocks_ex()
-                    miss = miss.loc[(miss.col==col_name ) & (miss.bin_id==bin_id)]
-                    for sn, blk_id in enumerate(list(miss.index)):
+                    loop_sn = 1 + (bin_id//3)
+                    for loop in range(loop_sn):
+                        from core.check import get_args_all, get_args_extend
+                        todo = get_args_all(col_name)
+                        #Shift always zero, so other shift can reuse the best args from shift#0
+                        best = get_best_arg_by_blk(bin_id, col_name, class_name,direct, shift=0)
+                        if best is not None and len(best) > 0 : # and cur_block.length > 10:
+                            extend_args = get_args_extend(best)
+                            todo = pd.concat([todo, extend_args])
 
-                        blk = get_blocks()
-                        cur_block = blk.iloc[blk_id]
+                        arg_list = get_args_missing_by_blk(todo, bin_id, col_name, shift)
 
-                        arg_list['bin_id'] = bin_id
-                        arg_list['blk_id'] = blk_id
-                        arg_list['wtid'] = cur_block.wtid
-                        arg_list['direct'] = 'down'
-                        arg_list['shift'] = int(shift)
 
-                        # logger.info(arg_list)
-                        logger.info(f'There are {len(arg_list):02} args for bin:{bin_col}, blk:{blk_id:06},{sn:03}/{len(miss):03}')
-                        score_list = estimate_arg(blk_id, arg_list)
-                        score_list_binid.append(score_list)
+                        if len(arg_list) == 0:
+                            logger.warning(f'No missing arg is found from todo:{len(todo)} for blk:{bin_col}')
+                            return 0
+
+
+                        #Estimate by blk_list
+                        miss = get_miss_blocks_ex()
+                        miss = miss.loc[(miss.col==col_name ) & (miss.bin_id==bin_id)]
+                        for sn, blk_id in enumerate(list(miss.index)):
+
+                            blk = get_blocks()
+                            cur_block = blk.iloc[blk_id]
+
+                            arg_list['bin_id'] = bin_id
+                            arg_list['blk_id'] = blk_id
+                            arg_list['wtid'] = cur_block.wtid
+                            arg_list['direct'] = 'down'
+                            arg_list['shift'] = int(shift)
+
+                            # logger.info(arg_list)
+                            logger.info(f'loop#{loop}/{loop_sn}, There are {len(arg_list):02} args for bin:{bin_col}, blk:{blk_id:06},{sn:03}/{len(miss):03}')
+                            score_list = estimate_arg(blk_id, arg_list)
+                            score_list_binid.append(score_list)
                     return pd.concat(score_list_binid)
                 except Exception as e:
                     logger.exception(e)

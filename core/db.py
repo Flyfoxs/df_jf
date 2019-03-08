@@ -208,6 +208,19 @@ def get_best_arg_by_blk(bin_id,col_name, class_name=None,direct=None, top=0, shi
 
 @timed()
 def get_args_missing_by_blk(original: pd.DataFrame, bin_id, col_name, shift):
+    original['file_num'] = original['file_num'].astype(int)
+    original['momenta_col_length'] = original['momenta_col_length'].astype(int)
+    original['related_col_count'] = original['related_col_count'].astype(int)
+    original['time_sn'] = original['time_sn'].astype(int)
+
+    original['n_estimators'] = original['n_estimators'].astype(int)
+    original['max_depth'] = original['max_depth'].astype(int)
+
+    original['momenta_impact'] = np.round(original['momenta_impact'], 3)
+    original['drop_threshold'] = np.round(original['drop_threshold'], 3)
+    original['window'] = np.round(original['window'], 3)
+
+
     exist_df = get_args_existing_by_blk(bin_id,col_name, shift=shift)
 
     threshold = 0.99
@@ -223,7 +236,7 @@ def get_args_missing_by_blk(original: pd.DataFrame, bin_id, col_name, shift):
 
     #Can not remove time_sn, if only 1 file
     original.loc[(original.file_num == 1) & (original.time_sn == 0), 'time_sn'] = 1
-    original = original.drop_duplicates()
+    original = original.drop_duplicates(model_paras)
 
     if len(exist_df) == 0 :
         return original
@@ -234,7 +247,7 @@ def get_args_missing_by_blk(original: pd.DataFrame, bin_id, col_name, shift):
 
     todo = todo.loc[pd.isna(todo.score_mean)]
     logger.info(f'todo:{len(todo)},miss:{len(original)}, existing:{len(exist_df)}')
-    return todo[original.columns]
+    return todo[original.columns].drop_duplicates(model_paras)
 
 def get_existing_blk():
     db = get_connect()

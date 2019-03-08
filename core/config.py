@@ -5,6 +5,7 @@ from file_cache.utils.util_log import *
 import numpy as np
 
 cache_size = 64
+count_wtid = 34 # file_count + 1
 
 model_paras = ['class_name', 'col_name',
                'drop_threshold',

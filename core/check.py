@@ -305,7 +305,7 @@ def get_momenta_col_length(col_name):
     if is_enum:
         return [1]
     else:
-        return [1,2]
+        return [1]
 
 @lru_cache()
 def get_momenta_impact(col_name):
@@ -597,6 +597,11 @@ def get_args_extend(best :pd.Series, para_name=None ):
     for related_col_count in range(4):
         tmp = best.copy()
         tmp.related_col_count = related_col_count
+        args = args.append(tmp)
+
+    for momenta_col_length in range(2):
+        tmp = best.copy()
+        tmp.momenta_col_length = momenta_col_length
         args = args.append(tmp)
 
     if  'file_num' in para_name_list:
