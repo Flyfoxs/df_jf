@@ -148,7 +148,7 @@ def insert(score_ind):
     db.commit()
 
 
-def get_args_existing_by_blk(bin_id, col_name, class_name=None, direct=None, shift=0):
+def get_args_existing_by_blk(bin_id, col_name, class_name=None, direct=None, shift=0, version_loc=None):
     db = get_connect()
     class_name = 'null' if class_name is None else f"'{class_name}'"
     direct = 'null' if direct is None else f"'{direct}'"
@@ -172,7 +172,7 @@ def get_args_existing_by_blk(bin_id, col_name, class_name=None, direct=None, shi
                                 and col_name='{col_name}'
                                 and class_name=ifnull({class_name}, class_name)
                                 and direct=ifnull({direct}, direct)  
-                                and version={version}
+                                and version={version_loc or version}
                                 and shift={shift}
                         group by
                         class_name, 
@@ -196,8 +196,8 @@ def get_args_existing_by_blk(bin_id, col_name, class_name=None, direct=None, shi
     return exist_df
 
 
-def get_best_arg_by_blk(bin_id,col_name, class_name=None,direct=None, top=0, shift=0):
-    args = get_args_existing_by_blk(bin_id, col_name, class_name,direct, shift)
+def get_best_arg_by_blk(bin_id,col_name, class_name=None,direct=None, top=0, shift=0, version=None):
+    args = get_args_existing_by_blk(bin_id, col_name, class_name,direct, shift, version)
     if args is not None and len(args)>1:
         args = args.reset_index().sort_values(['score_mean'], ascending=[False])#.head(10)
         #args = args.sort_values('score_std')

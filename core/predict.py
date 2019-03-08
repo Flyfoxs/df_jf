@@ -278,15 +278,19 @@ def process_blk_id(bin_col):
 
                 try:
                     score_list_binid = []
-                    loop_sn = 1 + (bin_id//3)
+                    loop_sn = 1 + (bin_id//2)
                     for loop in range(loop_sn):
-                        from core.check import get_args_all, get_args_extend
+                        from core.check import get_args_all, get_args_extend, get_args_transfer
                         todo = get_args_all(col_name)
                         #Shift always zero, so other shift can reuse the best args from shift#0
                         best = get_best_arg_by_blk(bin_id, col_name, class_name,direct, shift=0)
                         if best is not None and len(best) > 0 : # and cur_block.length > 10:
                             extend_args = get_args_extend(best)
                             todo = pd.concat([todo, extend_args])
+
+                        tranfer = get_args_transfer(bin_id, col_name)
+
+                        todo = pd.concat([todo,tranfer])
 
                         arg_list = get_args_missing_by_blk(todo, bin_id, col_name, shift)
 

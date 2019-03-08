@@ -171,33 +171,33 @@ def summary_all_best_score(wtid_list=[-1], top_n=0, **kwargs):
 
     return df.sort_values('score').reset_index(drop=True)
 
+#
+# @timed()
+# def check_score_all():
+#
+#
+#     #from multiprocessing.dummy import Pool as ThreadPool #线程
+#     from multiprocessing import Pool as ThreadPool  # 进程
+#
+#     logger.info(f"Start a poll with size:{check_options().thread}")
+#     pool = ThreadPool(check_options().thread)
+#
+#     #summary = summary_all_best_score()
+#
+#     bin_count = check_options().bin_count
+#     import itertools
+#     bin_col_list = itertools.product(get_predict_col(), range(0, bin_count))
+#     #bin_col_list = [(5,'var029')]
+#
+#     # try:
+#     #     pool.map(check_score_column, bin_col_list, chunksize=1)
+#     #
+#     # except Exception as e:
+#     #     logger.exception(e)
+#     #     os._exit(9)
 
-@timed()
-def check_score_all():
 
-
-    #from multiprocessing.dummy import Pool as ThreadPool #线程
-    from multiprocessing import Pool as ThreadPool  # 进程
-
-    logger.info(f"Start a poll with size:{check_options().thread}")
-    pool = ThreadPool(check_options().thread)
-
-    #summary = summary_all_best_score()
-
-    bin_count = check_options().bin_count
-    import itertools
-    bin_col_list = itertools.product(get_predict_col(), range(0, bin_count))
-    #bin_col_list = [(5,'var029')]
-
-    try:
-        pool.map(check_score_column, bin_col_list, chunksize=1)
-
-    except Exception as e:
-        logger.exception(e)
-        os._exit(9)
-
-
-
+@lru_cache()
 @file_cache()
 def estimate_score(version):
     # blk_list = get_blocks()
@@ -206,8 +206,8 @@ def estimate_score(version):
     for bin_id in range(10):
         from core.merge_multiple_file import select_col
         logger.info(f'bin_id:{bin_id} is done')
-        for col_name in get_predict_col():
-            arg = get_best_arg_by_blk(bin_id,col_name, class_name='lr',direct='down', shift=0)
+        for col_name in select_col:
+            arg = get_best_arg_by_blk(bin_id,col_name, class_name='lr',direct='down', shift=0, version=version)
             df = df.append(arg)
     return df
 
@@ -406,89 +406,89 @@ def heart_beart(score_file, msg):
 #
 #
 
-
-
-@timed()
-def check_score_column(bin_col):
-    try:
-        with factory.create_lock(str(bin_col)):
-            col_name, bin_id  = bin_col
-
-            gp_name = check_options().gp_name
-            score_file = f'./score/{gp_name}/{bin_id:02}/{col_name}.h5'
-            if check_exising_his(score_file):
-                his_df = pd.read_hdf(score_file,'/his')
-                latest = his_df.sort_values('ct', ascending=False).iloc[0]
-
-                from datetime import timedelta
-                gap = (pd.to_datetime('now') - latest.ct) / timedelta(minutes=1)
-                if gap <= check_options().check_gap:
-                    logger.warning(f'Ignore this time for {col_name}, since the server:{latest.server} already save in {round(gap)} mins ago, {latest.ct}')
-                    return -1
-                else:
-                    logger.info(f'Start to process {bin_col} Last time is at {latest.ct}')
-            #heart_beart(score_file, f'dummpy for:{col_name}, bin_id:{bin_id}')
-
-            # model = check_options().model
-            try:
-                score_df = pd.read_hdf(score_file,'score')
-            except Exception as e:
-                logger.info(f'No existing score is found for :{col_name} bin_id:{bin_id}')
-                score_df = pd.DataFrame()
-
-
-            processed_count = 0
-            try:
-                arg_list = get_args_missing(col_name, bin_id)
-            except Exception as e:
-                logger.exception(e)
-                logger.error(f'Fail to get missing arg for:{col_name}, {bin_id}')
-
-            logger.info(f'Mini:{check_options().mini}, Todo:{len(arg_list)} Current sample:{score_df.shape}, {col_name},bin_id:{bin_id}' )
-
-            heart_beart(score_file, f'Existing:{len(score_df)}, todo:{len(arg_list)}, type:{date_type[col_name].__name__}')
-
-            for sn, args in arg_list.iterrows():
-                try:
-                    score, count, min_len, max_len , block_count = check_score(args, shift =0)
-                except Exception as e:
-                    logger.exception(e)
-                    raise e
-                args['score'] = round(score/count, 4) if count else 0
-                args['score_total'] = score
-                args['score_count'] = count
-                args['min_len'] = min_len
-                args['max_len'] = max_len
-                args['block_count'] = block_count
-                args['ct'] = pd.to_datetime('now')
-
-                score_df = score_df.append(args, ignore_index=True)
-                logger.info(f'Current df:{score_df.shape}, last score is {score:.4f} wtih:\n{args}')
-
-                processed_count += 1
-
-                if processed_count % 100 ==0:
-                    score_df.to_hdf(score_file, 'score')
-                    heart_beart(score_file, f'processed:{processed_count}/current:{len(score_df)}, type:{date_type[col_name].__name__}')
-
-            his_df = heart_beart(score_file, f'Done:{processed_count}/current:{len(score_df)}, type:{date_type[col_name].__name__}')
-
-            score_df.ct = score_df.ct.astype('str')
-            score_df = score_df.sort_values('ct',ascending=False)
-            len_with_dup = len(score_df)
-            score_df = score_df.drop_duplicates(model_paras)
-            remove_len = len_with_dup - len(score_df)
-            if remove_len > 0:
-                logger.warning(f'There are {remove_len} records are removed, current len is:{len(score_df)}, old:{len_with_dup}')
-            score_df.to_hdf(score_file, 'score', mode='w')
-            his_df.to_hdf(score_file, 'his')
-
-            logger.info(f'There are {processed_count} process for {col_name}, Current total:{len(score_df)}')
-
-            return len(arg_list)
-    except RedLockError as e:
-        logger.warning(f'Other Process is already lock:{bin_col}')
-        logger.warning(e)
+#
+#
+# @timed()
+# def check_score_column(bin_col):
+#     try:
+#         with factory.create_lock(str(bin_col)):
+#             col_name, bin_id  = bin_col
+#
+#             gp_name = check_options().gp_name
+#             score_file = f'./score/{gp_name}/{bin_id:02}/{col_name}.h5'
+#             if check_exising_his(score_file):
+#                 his_df = pd.read_hdf(score_file,'/his')
+#                 latest = his_df.sort_values('ct', ascending=False).iloc[0]
+#
+#                 from datetime import timedelta
+#                 gap = (pd.to_datetime('now') - latest.ct) / timedelta(minutes=1)
+#                 if gap <= check_options().check_gap:
+#                     logger.warning(f'Ignore this time for {col_name}, since the server:{latest.server} already save in {round(gap)} mins ago, {latest.ct}')
+#                     return -1
+#                 else:
+#                     logger.info(f'Start to process {bin_col} Last time is at {latest.ct}')
+#             #heart_beart(score_file, f'dummpy for:{col_name}, bin_id:{bin_id}')
+#
+#             # model = check_options().model
+#             try:
+#                 score_df = pd.read_hdf(score_file,'score')
+#             except Exception as e:
+#                 logger.info(f'No existing score is found for :{col_name} bin_id:{bin_id}')
+#                 score_df = pd.DataFrame()
+#
+#
+#             processed_count = 0
+#             try:
+#                 arg_list = get_args_missing(col_name, bin_id)
+#             except Exception as e:
+#                 logger.exception(e)
+#                 logger.error(f'Fail to get missing arg for:{col_name}, {bin_id}')
+#
+#             logger.info(f'Mini:{check_options().mini}, Todo:{len(arg_list)} Current sample:{score_df.shape}, {col_name},bin_id:{bin_id}' )
+#
+#             heart_beart(score_file, f'Existing:{len(score_df)}, todo:{len(arg_list)}, type:{date_type[col_name].__name__}')
+#
+#             for sn, args in arg_list.iterrows():
+#                 try:
+#                     score, count, min_len, max_len , block_count = check_score(args, shift =0)
+#                 except Exception as e:
+#                     logger.exception(e)
+#                     raise e
+#                 args['score'] = round(score/count, 4) if count else 0
+#                 args['score_total'] = score
+#                 args['score_count'] = count
+#                 args['min_len'] = min_len
+#                 args['max_len'] = max_len
+#                 args['block_count'] = block_count
+#                 args['ct'] = pd.to_datetime('now')
+#
+#                 score_df = score_df.append(args, ignore_index=True)
+#                 logger.info(f'Current df:{score_df.shape}, last score is {score:.4f} wtih:\n{args}')
+#
+#                 processed_count += 1
+#
+#                 if processed_count % 100 ==0:
+#                     score_df.to_hdf(score_file, 'score')
+#                     heart_beart(score_file, f'processed:{processed_count}/current:{len(score_df)}, type:{date_type[col_name].__name__}')
+#
+#             his_df = heart_beart(score_file, f'Done:{processed_count}/current:{len(score_df)}, type:{date_type[col_name].__name__}')
+#
+#             score_df.ct = score_df.ct.astype('str')
+#             score_df = score_df.sort_values('ct',ascending=False)
+#             len_with_dup = len(score_df)
+#             score_df = score_df.drop_duplicates(model_paras)
+#             remove_len = len_with_dup - len(score_df)
+#             if remove_len > 0:
+#                 logger.warning(f'There are {remove_len} records are removed, current len is:{len(score_df)}, old:{len_with_dup}')
+#             score_df.to_hdf(score_file, 'score', mode='w')
+#             his_df.to_hdf(score_file, 'his')
+#
+#             logger.info(f'There are {processed_count} process for {col_name}, Current total:{len(score_df)}')
+#
+#             return len(arg_list)
+#     except RedLockError as e:
+#         logger.warning(f'Other Process is already lock:{bin_col}')
+#         logger.warning(e)
 
 @timed()
 @lru_cache()
@@ -532,54 +532,59 @@ def get_args_all(col_name):
 
         return todo
 
+#
+# ######Can not support cache
+# @timed()
+#
+# def get_args_missing(col_name, bin_id):
+#     original = get_args_all(col_name)
+#
+#     dynamic = get_args_dynamic(col_name)
+#
+#     todo = pd.concat([original, dynamic])
+#
+#     #Can not disable time_sn, if only one file and no related_col
+#     todo.loc[(todo.file_num==1) &(todo.related_col_count==0) , 'time_sn'] = 1
+#     todo = todo.drop_duplicates()
+#
+#     original_len = len(todo)
+#
+#     gp_name = check_options().gp_name
+#     score_file = f'./score/{gp_name}/{bin_id:02}/{col_name}.h5'
+#     #print(score_file)
+#     try:
+#         base = pd.read_hdf(score_file, 'score')
+#         existing_len = len(base)
+#     except Exception as e:
+#         logger.info(f'It is a new task for {col_name}, todo_bin_id:{bin_id}')
+#         existing_len = 0
+#
+#
+#     if existing_len == 0 :
+#         logger.info(f'No data is found from file:{score_file}, todo:{todo.shape}')
+#         todo['bin_id'] = bin_id
+#         return todo
+#
+#
+#     # print(col_list)
+#     #print(todo.shape, base.shape, dynamic.shape)
+#
+#     #base = base.rename(columns={'ct': 'ct_old', 'wtid': 'wtid_old'})
+#
+#     todo = todo.merge(base, how='left', on=model_paras)
+#     todo = todo.loc[pd.isna(todo.ct) & pd.isna(todo.bin_id)][model_paras].reset_index(drop=True)
+#
+#
+#     todo['bin_id'] = int(bin_id)
+#     logger.info(f'Final todo:{len(todo)} , original todo:{original_len}, existing:{existing_len},{col_name}, bin_id:{bin_id}')
+#     return todo
 
-######Can not support cache
 @timed()
-
-def get_args_missing(col_name, bin_id):
-    original = get_args_all(col_name)
-
-    dynamic = get_args_dynamic(col_name)
-
-    todo = pd.concat([original, dynamic])
-
-    #Can not disable time_sn, if only one file and no related_col
-    todo.loc[(todo.file_num==1) &(todo.related_col_count==0) , 'time_sn'] = 1
-    todo = todo.drop_duplicates()
-
-    original_len = len(todo)
-
-    gp_name = check_options().gp_name
-    score_file = f'./score/{gp_name}/{bin_id:02}/{col_name}.h5'
-    #print(score_file)
-    try:
-        base = pd.read_hdf(score_file, 'score')
-        existing_len = len(base)
-    except Exception as e:
-        logger.info(f'It is a new task for {col_name}, todo_bin_id:{bin_id}')
-        existing_len = 0
-
-
-    if existing_len == 0 :
-        logger.info(f'No data is found from file:{score_file}, todo:{todo.shape}')
-        todo['bin_id'] = bin_id
-        return todo
-
-
-    # print(col_list)
-    #print(todo.shape, base.shape, dynamic.shape)
-
-    #base = base.rename(columns={'ct': 'ct_old', 'wtid': 'wtid_old'})
-
-    todo = todo.merge(base, how='left', on=model_paras)
-    todo = todo.loc[pd.isna(todo.ct) & pd.isna(todo.bin_id)][model_paras].reset_index(drop=True)
-
-
-    todo['bin_id'] = int(bin_id)
-    logger.info(f'Final todo:{len(todo)} , original todo:{original_len}, existing:{existing_len},{col_name}, bin_id:{bin_id}')
-    return todo
-
-
+def get_args_transfer(bin_id, col_name):
+    tmp_score = estimate_score(1)
+    transfer_args =  tmp_score[ tmp_score.bin_id.isin([bin_id-1, bin_id, bin_id+1])
+                          &  (tmp_score.col_name==col_name)]
+    return transfer_args[model_paras]
 
 
 @timed()
@@ -599,7 +604,7 @@ def get_args_extend(best :pd.Series, para_name=None ):
         tmp.related_col_count = related_col_count
         args = args.append(tmp)
 
-    for momenta_col_length in range(2):
+    for momenta_col_length in [1,2,10]:
         tmp = best.copy()
         tmp.momenta_col_length = momenta_col_length
         args = args.append(tmp)
@@ -795,11 +800,11 @@ def get_best_para(gp_name, col_name, bin_id, top_n=0, **kwargs):
 
 
 
-if __name__ == '__main__':
-    args = check_options()
-    logger.info(f'Program with:{args} ')
-
-    check_score_all()
+# if __name__ == '__main__':
+#     args = check_options()
+#     logger.info(f'Program with:{args} ')
+#
+#     check_score_all()
 
     """
     python ./core/check.py -L  --bin_count 9 --gp_name lr_bin_9  > check1.log 2>&1 &
