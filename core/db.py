@@ -87,8 +87,7 @@ def insert(score_ind):
     score_ind['time_begin'] = cur_blk.time_begin
     score_ind['time_end'] = cur_blk.time_end
     score_ind = dict(score_ind )
-    ##print(score_ind)
-    #print('abc{blk_id}'.format(**score_ind))
+
     sql = """insert into score_list(
             blk_id  ,
             bin_id,
@@ -143,7 +142,7 @@ def insert(score_ind):
                )
                 """.format(**score_ind, version=version)
     cur = db.cursor()
-    logger.info(sql)
+    logger.debug(sql)
     cur.execute(sql )
     db.commit()
 
@@ -188,7 +187,7 @@ def get_args_existing_by_blk(bin_id, col_name, class_name=None, direct=None, shi
                         max_depth,
                         bin_id   
                 """
-    logger.info(f'get_args_existing_by_blk:{sql}')
+    logger.debug(f'get_args_existing_by_blk:{sql}')
     exist_df = pd.read_sql(sql, db)
     if len(exist_df) == 0 :
         return exist_df

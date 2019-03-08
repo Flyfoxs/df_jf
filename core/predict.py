@@ -223,6 +223,7 @@ def estimate_arg(miss_block_id, arg_df):
 
 @timed()
 def gen_best_sub(best_arg):
+
     miss_block_id=best_arg.blk_id
     cur_block = get_blocks().loc[best_arg.blk_id]
 
@@ -234,6 +235,19 @@ def gen_best_sub(best_arg):
                 f'std:{score_std},')
 
     col_name = cur_block['col']
+
+    folder = f'./output/blocks/{col_name}'
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+
+    file_prefix = f'{folder}/{col_name}_{miss_block_id:06}'
+
+    exist_len = len(glob(f'{file_prefix}*'))
+    if  exist_len > 0:
+        logger.warning(f'Already find {exist_len} file for file:{file_prefix}')
+        return  score_avg
+
+
     wtid = cur_block['wtid']
     begin, end = cur_block.begin, cur_block.end
 
@@ -253,7 +267,7 @@ def gen_best_sub(best_arg):
     predict_res = pd.Series(predict_res, index=sub.index)
     logger.debug(f'sub={sub.shape}, predict_res={predict_res.shape}, type={type(predict_res)}')
 
-    file_csv = f'./output/blocks/{col_name}_{miss_block_id:06}_{score_avg:.4f}_{score_std:.4f}.csv'
+    file_csv = f'{file_prefix}_{score_avg:.4f}_{score_std:.4f}.csv'
     logger.info(f'Result will save to:{file_csv}')
     predict_res.to_csv(file_csv)
     return score_avg
@@ -278,7 +292,7 @@ def process_blk_id(bin_col):
 
                 try:
                     score_list_binid = []
-                    loop_sn = 1 + (bin_id//2)
+                    loop_sn = 2 + (bin_id//2)
                     for loop in range(loop_sn):
                         from core.check import get_args_all, get_args_extend, get_args_transfer
                         todo = get_args_all(col_name)
@@ -296,7 +310,7 @@ def process_blk_id(bin_col):
 
 
                         if len(arg_list) == 0:
-                            logger.warning(f'No missing arg is found from todo:{len(todo)} for blk:{bin_col}')
+                            logger.warning(f'loop#{loop}/{loop_sn},No missing arg is found from todo:{len(todo)} for blk:{bin_col}')
                             return 0
 
 

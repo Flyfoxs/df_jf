@@ -9,15 +9,24 @@ from core.merge_multiple_file import *
 
 
 @timed()
-def merge_file(base_file = './output/0.67917234.csv'):
+def merge_file(base_file = './output/0.67917234.csv', top_n=5):
     base_df = pd.read_csv(base_file)
     base_df.index = base_df.index_ex
     bk_list = get_blocks()
-    for blk_id, cnt in get_existing_blks().items():
+    existing_file = get_existing_blks()
+    for blk_id, cnt in existing_file.items():
         cur_blk = bk_list.iloc[blk_id]
         wtid = cur_blk.wtid
         col_name = cur_blk.col
-        file_list = glob(f'./output/blocks/*_{blk_id:06}_*.csv')
+
+        from core.merge_multiple_file import select_col
+        #select_col = select_col[:5]
+        if col_name not in select_col:
+            logger.warning(f'{col_name} is not in the select list:{select_col}')
+            continue
+
+
+        file_list = glob(f'./output/blocks/{col_name}/*_{blk_id:06}_*.csv')
         file_list = sorted(file_list)
 
         score_all = np.zeros((cur_blk.length,cnt))
@@ -34,7 +43,7 @@ def merge_file(base_file = './output/0.67917234.csv'):
 
     base_df = convert_enum(base_df)
     from core.merge_multiple_file import select_col
-    file = f"./output/merge_{len(select_col)}_{'_'.join(select_col[-2:])}.csv"
+    file = f"./output/merge_{len(existing_file)}_{len(select_col)}_{'_'.join(select_col[-2:])}.csv"
     base_df.iloc[:, :70].to_csv(file, index=None)
     logger.info(f'Merge file save to:{file}')
     return base_df.iloc[:, :70]
@@ -69,7 +78,7 @@ def gen_best():
 
     logger.info(f'There are {len(arg_list)} blockid need to process')
     pool = ThreadPool(16)
-    pool.map(gen_best_sub, arg_list, chunksize=1)
+    pool.map(gen_best_sub, arg_list, chunksize=np.random.randint(1,64))
 
 def get_existing_blks():
     file_list = glob('./output/blocks/*.csv')
@@ -84,7 +93,10 @@ def get_existing_blks():
     return dict(file_map)
 
 if __name__ == '__main__':
-    #gen_best()
+    """
+    python ./core/merge.py > merge_7.log 2>&1
+    """
+    gen_best()
     merge_file()
     #merge_diff_col()
 
