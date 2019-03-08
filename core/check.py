@@ -581,10 +581,12 @@ def get_args_all(col_name):
 
 @timed()
 def get_args_transfer(bin_id, col_name):
-    tmp_score = estimate_score(1)
-    transfer_args =  tmp_score[ tmp_score.bin_id.isin([bin_id-1, bin_id, bin_id+1])
+    arg_list = []
+    for tmp_score in [estimate_score(1), pd.read_hdf('./cache/lr_bin_9.h5')]:
+        transfer_args =  tmp_score[ tmp_score.bin_id.isin([bin_id-1, bin_id, bin_id+1])
                           &  (tmp_score.col_name==col_name)]
-    return transfer_args[model_paras]
+        arg_list.append(transfer_args[model_paras])
+    return pd.concat(arg_list)
 
 
 @timed()
