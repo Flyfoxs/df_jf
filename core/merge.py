@@ -43,7 +43,7 @@ def merge_file(base_file = './output/0.67917234.csv', top_n=5):
 
     base_df = convert_enum(base_df)
     from core.merge_multiple_file import select_col
-    file = f"./output/merge_{len(existing_file)}_{len(select_col)}_{'_'.join(select_col[-2:])}.csv"
+    file = f"./output/merge_m2_{len(existing_file)}_{len(select_col)}_{'_'.join(select_col[-2:])}.csv"
     base_df.iloc[:, :70].to_csv(file, index=None)
     logger.info(f'Merge file save to:{file}')
     return base_df.iloc[:, :70]
@@ -61,7 +61,7 @@ def gen_best():
 
     arg_list = []
     for col_name in imp_list:
-        for bin_id in range(10):
+        for bin_id in range(9):
             best = get_best_arg_by_blk(bin_id, col_name, 'lr', 'down', shift=0) #gen_best
             blk_list = get_miss_blocks_ex()
             blk_list = blk_list.loc[
@@ -77,11 +77,11 @@ def gen_best():
                 arg_list.append(best)
 
     logger.info(f'There are {len(arg_list)} blockid need to process')
-    pool = ThreadPool(16)
+    pool = ThreadPool(10)
     pool.map(gen_best_sub, arg_list, chunksize=np.random.randint(1,64))
 
 def get_existing_blks():
-    file_list = glob('./output/blocks/*.csv')
+    file_list = glob('./output/blocks/*/*.csv')
     file_list = sorted(file_list)
     file_map = DefaultMunch(0)
     for file_path in file_list:
@@ -94,7 +94,7 @@ def get_existing_blks():
 
 if __name__ == '__main__':
     """
-    python ./core/merge.py > merge_7.log 2>&1
+    python ./core/merge.py > merge_8.log 2>&1
     """
     gen_best()
     merge_file()

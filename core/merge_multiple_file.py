@@ -1,5 +1,7 @@
 import pandas as pd
 import numpy as np
+
+new_file = 'merge_25140_32_var019_var065.csv'
 config={
     # 'var067':[('merge_4_var062_var012.csv',1)],
     # 'var037':[('merge_4_var062_var012.csv',1)],
@@ -7,46 +9,46 @@ config={
     #
 
 
-    'var067':[('0.67950475000.csv',1)],
-    'var037':[('0.67950475000.csv',1)],
-    'var062':[('0.67950475000.csv',1)],
-    'var012':[('0.67950475000.csv',1)],
-    'var007':[('0.67950475000.csv',1)],
+    'var067': [(new_file,1)],
+    'var037': [(new_file,1)],
+    'var062': [(new_file,1)],
+    'var012': [(new_file,1)],
+    'var007': [(new_file,1)],
 
-    'var014': [('0.67950475000.csv', 1)],
-    'var001': [('0.67950475000.csv', 1)],
-    'var022': [('0.67950475000.csv', 1)],
-    'var029': [('0.67950475000.csv', 1)],
-    'var038': [('0.67950475000.csv', 1)],
-    'var005': [('0.67950475000.csv', 1)],
-    'var028': [('0.67950475000.csv', 1)],
+    'var014': [(new_file, 1)],
+    'var001': [(new_file, 1)],
+    'var022': [(new_file, 1)],
+    'var029': [(new_file, 1)],
+    'var038': [(new_file, 1)],
+    'var005': [(new_file, 1)],
+    'var028': [(new_file, 1)],
 
-    'var006': [('0.67950475000.csv', 1)],
-    'var011': [('0.67950475000.csv', 1)],
-    'var057': [('0.67950475000.csv', 1)],
-    'var055': [('0.67950475000.csv', 1)],
-    'var051': [('0.67950475000.csv', 1)],
-    'var024': [('0.67950475000.csv', 1)],
-    'var035': [('0.67950475000.csv', 1)],
-    'var045': [('0.67950475000.csv', 1)],
-    'var052': [('0.67950475000.csv', 1)],
-    'var003': [('0.67950475000.csv', 1)],
-    'var040': [('0.67950475000.csv', 1)],
-    'var033': [('0.67950475000.csv', 1)],
-    'var002': [('0.67950475000.csv', 1)],
-    'var030': [('0.67950475000.csv', 1)],
-    'var021': [('0.67950475000.csv', 1)],
-    'var056': [('0.67950475000.csv', 1)],
-    'var060': [('0.67950475000.csv', 1)],
-    'var036': [('0.67950475000.csv', 1)],
+    'var006': [(new_file, 1)],
+    'var011': [(new_file, 1)],
+    'var057': [(new_file, 1)],
+    'var055': [(new_file, 1)],
+    'var051': [(new_file, 1)],
+    'var024': [(new_file, 1)],
+    'var035': [(new_file, 1)],
+    'var045': [(new_file, 1)],
+    'var052': [(new_file, 1)],
+    'var003': [(new_file, 1)],
+    'var040': [(new_file, 1)],
+    'var033': [(new_file, 1)],
+    'var002': [(new_file, 1)],
+    'var030': [(new_file, 1)],
+    'var021': [(new_file, 1)],
+    'var056': [(new_file, 1)],
+    'var060': [(new_file, 1)],
+    'var036': [(new_file, 1)], #30
     #'var053' : [('0.67950475000.csv', 1)], Drop
 
 
     #'var016': [('0.67950475000.csv', 1)],#Drop 31, int
     #'var066': [('0.67950475000.csv', 1)],#Drop 32, int
-    'var019': [('0.67950475000.csv', 1)], #33
+    'var019': [(new_file, 1)], #33
     #'var059': [('0.67950475000.csv', 1)],#Drop 34
-    'var065': [('0.67950475000.csv', 1)], #35
+    'var065': [(new_file, 1)], #35
     #'var053': [('0.67950475000.csv', 1)], Drop, int
     #'var018': [('0.67950475000.csv', 1)], Drop
     #'var047': [('0.67950475000.csv', 1)], #36 , int
@@ -62,7 +64,7 @@ config={
 
 select_col = list(config.keys())
 
-def merge_diff_col(base_file='./output/merge_0306_var067_var037_var062.csv', ):
+def merge_diff_col(base_file='./output/0.70180553000.csv', ):
     base = pd.read_csv(base_file)
 
     col_list = []

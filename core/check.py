@@ -582,7 +582,9 @@ def get_args_all(col_name):
 @timed()
 def get_args_transfer(bin_id, col_name):
     arg_list = []
-    for tmp_score in [estimate_score(1), pd.read_hdf('./cache/lr_bin_9.h5')]:
+    file_list = ['v1.h5', 'v3.h5', 'lr_bin_9.h5']
+    for file in file_list:
+        tmp_score = pd.read_hdf(f'./imp/{file}')
         transfer_args =  tmp_score[ tmp_score.bin_id.isin([bin_id-1, bin_id, bin_id+1])
                           &  (tmp_score.col_name==col_name)]
         arg_list.append(transfer_args[model_paras])

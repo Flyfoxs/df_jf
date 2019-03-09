@@ -41,3 +41,13 @@ ON score_list (col_name);
 
 CREATE INDEX wtid_index
 ON score_list (wtid);
+
+CREATE INDEX version_index
+ON score_list (version);
+
+CREATE INDEX col_bin_index
+ON score_list (col_name, bin_id);
+
+
+CREATE INDEX ct_index
+ON score_list (ct);

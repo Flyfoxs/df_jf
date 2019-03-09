@@ -47,6 +47,11 @@ The train/validate data closed to test data
 Training data estimate(size, wtid, date, environment)
 
 
+# reuse predict file
+# lgb
+# col in same file
+
+
 
 
 
