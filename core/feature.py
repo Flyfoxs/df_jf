@@ -1,5 +1,6 @@
 import sys
 import os
+import time
 
 sys.path.insert(99, './df_jf')
 sys.path.insert(99, '../df_jf')
@@ -227,7 +228,7 @@ def enhance_self_file(miss_block_id,train,val_feature, model):
 
     if model == 0: #Remove the column from cur_file
         val_feature = val_feature.copy().drop(axis='column', columns=todo_col_list)
-        train = train.drop(axis='column', columns=todo_col_list)
+        train = train.copy().drop(axis='column', columns=todo_col_list)
     elif model == 1: #Fill, BFILL
         val_feature = val_feature.copy().drop(axis='column', columns=todo_col_list)
         train = train.drop(axis='column', columns=todo_col_list)
@@ -254,7 +255,7 @@ def enhance_self_file(miss_block_id,train,val_feature, model):
 
 
 
-def get_train_df_by_val(miss_block_id, train,val_feature, window, drop_threshold, enable_time, file_num, model=0):
+def get_train_df_by_val(miss_block_id, train,val_feature, window, drop_threshold, enable_time, file_num, col_per, model=0):
     """
     :param model: 0: don't depend on current file: BASELINE
                   1: ffill, bfill for current file: FOR TRAINING MODEL
@@ -311,8 +312,9 @@ def get_train_df_by_val(miss_block_id, train,val_feature, window, drop_threshold
                 #print(enable_time)
                 col_list.remove('time_sn')
             #print(col_list)
-            if pd.isna(train_feature[col]).all() or pd.isna(val_feature[col]).all() or \
-                    (len(col_list) >= 3 and (coverage_train < drop_threshold or coverage_val < drop_threshold)):
+            if pd.isna(train_feature[col]).all() \
+                    or pd.isna(val_feature[col]).all() \
+                    or (len(col_list) >= 3 and (coverage_train < drop_threshold or coverage_val < drop_threshold)):
                 del train_feature[col]
                 del val_feature[col]
                 logger.info(f'Remove {col} from {col_list}, coverage train/val is:{coverage_train}/{coverage_val} less than {drop_threshold}')
@@ -377,6 +379,9 @@ def get_train_df_by_val(miss_block_id, train,val_feature, window, drop_threshold
     if len(train_feature) == 0:
         logger.exception(f'Train feature length is none, for val block:{val_begin}:{val_end}, window:{window}')
         raise Exception(f'Train feature length is none, for val block:{val_begin}:{val_end}, window:{window}')
+
+    train_feature, val_feature = get_feature_by_corr(train_feature, val_feature , col_per=col_per)
+
     return train_feature, val_feature
 
 
@@ -453,7 +458,8 @@ def check_std(wtid, col, windows=100):
 def convert_enum(df):
     for col in df:
         if col in date_type and 'int' in date_type[col].__name__:
-            df[col] = df[col].astype(int)
+            if all(pd.notna(df[col])):
+                df[col] = df[col].astype(int)
     return df
 
 #
@@ -652,12 +658,23 @@ def get_train_feature_multi_file(wtid, col, file_num, related_col_count):
 
     return train.sort_index()
 
+def get_feature_by_corr(train, val , col_per):
+    col_per = round(col_per, 2)
+    old_len = train.shape[1]
+    top_n = max(1, int(old_len * col_per)-1 )
+    col = train.columns[0]
+    select = [col]
+    top_columns = list(abs(train.corr().iloc[1:,0]).sort_values(ascending=False).index)
+    #print(top_n)
+    select.extend(top_columns[:top_n])
+    logger.info(f'get_feature_by_corr: {old_len - len(select):02} columns are remove from {old_len:02} columns, top_n:{top_n:02}, col_per:{col_per}')
+    return train.copy()[select], val.copy()[select]
 
 @timed()
 @lru_cache(maxsize=5)
 def get_train_val(miss_block_id, file_num, window,
                   related_col_count, drop_threshold, enable_time,
-                  shift, direct , model=0):
+                  shift, direct , col_per, model=0):
     local_args = locals()
     logger.info(f'input get_train_val:{locals()}')
 
@@ -680,7 +697,7 @@ def get_train_val(miss_block_id, file_num, window,
 
     #Drop feature by drop_threshold
     train_df, val_df = get_train_df_by_val(miss_block_id, train.loc[b1:e3].copy(), val_df.copy(), window,
-                                   drop_threshold, enable_time, file_num, model)
+                                   drop_threshold, enable_time, file_num, col_per, model)
 
     if pd.isna(val_df.iloc[:, 0]).any():
         logger.warning(f'Val LABEL has None for traning, blk:{miss_block_id}, window:{window}, shift:{shift}, {direct})')

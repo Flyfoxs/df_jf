@@ -193,7 +193,7 @@ def predict_block_id(miss_block_id, arg):
     train_df, val_df, data_blk_id = \
         get_train_val(miss_block_id, arg.file_num, round(arg.window,2),
                       arg.related_col_count, arg.drop_threshold,
-                      arg.time_sn, arg['shift'], arg.direct, model=0)
+                      arg.time_sn, arg['shift'], arg.direct, arg.col_per, model=0)
     if data_blk_id<0:
         logger.warning(f'Can not find closed block for :{replace_useless_mark(arg)}')
         return None
@@ -229,6 +229,7 @@ def gen_best_sub(best_arg):
 
     score_avg = best_arg["score_mean"]
     score_std = best_arg["score_std"]
+    bin_id = int(best_arg["bin_id"])
 
     logger.info(f'The select score for blkid:{miss_block_id}, '
                 f'avg:{score_avg}, '
@@ -238,7 +239,10 @@ def gen_best_sub(best_arg):
 
     folder = f'./output/blocks/{col_name}'
     if not os.path.exists(folder):
-        os.makedirs(folder)
+        try:
+            os.makedirs(folder)
+        except Exception as e:
+            logger.info(f'Folder existing:{folder}')
 
     file_prefix = f'{folder}/{col_name}_{miss_block_id:06}'
 
@@ -258,7 +262,7 @@ def gen_best_sub(best_arg):
     train, sub = get_train_df_by_val(miss_block_id, train, sub,
                                      best_arg.window,
                                      best_arg.drop_threshold,
-                                     best_arg.time_sn, best_arg.file_num, model=2)
+                                     best_arg.time_sn, best_arg.file_num, best_arg.col_per, model=0)
 
 
     predict_fn = get_predict_fun(train, best_arg)
@@ -267,7 +271,7 @@ def gen_best_sub(best_arg):
     predict_res = pd.Series(predict_res, index=sub.index)
     logger.debug(f'sub={sub.shape}, predict_res={predict_res.shape}, type={type(predict_res)}')
 
-    file_csv = f'{file_prefix}_{score_avg:.4f}_{score_std:.4f}.csv'
+    file_csv = f'{file_prefix}_{score_avg:.4f}_{score_std:.4f}_{bin_id}.csv'
     logger.info(f'Result will save to:{file_csv}')
     predict_res.to_csv(file_csv)
     return score_avg
@@ -318,20 +322,24 @@ def process_blk_id(bin_col):
                         miss = get_miss_blocks_ex()
                         miss = miss.loc[(miss.col==col_name ) & (miss.bin_id==bin_id)]
                         for sn, blk_id in enumerate(list(miss.index)):
-
+                            # if len(miss)<=10 and bin_id >=5 :
+                            #     direct_list = ['down', 'up']
+                            # else:
+                            #     direct_list =
                             blk = get_blocks()
                             cur_block = blk.iloc[blk_id]
+                            for direct in ['down']:
+                                arg_list['bin_id'] = bin_id
+                                arg_list['blk_id'] = blk_id
+                                arg_list['wtid'] = cur_block.wtid
+                                arg_list['direct'] = direct
+                                arg_list['shift'] = int(shift)
 
-                            arg_list['bin_id'] = bin_id
-                            arg_list['blk_id'] = blk_id
-                            arg_list['wtid'] = cur_block.wtid
-                            arg_list['direct'] = 'down'
-                            arg_list['shift'] = int(shift)
+                                # logger.info(arg_list)
+                                logger.info(f'loop#{loop}/{loop_sn}, direct:{direct}, There are {len(arg_list):02} args for bin:{bin_col}, blk:{blk_id:06},{sn:03}/{len(miss):03}')
+                                score_list = estimate_arg(blk_id, arg_list)
+                                score_list_binid.append(score_list)
 
-                            # logger.info(arg_list)
-                            logger.info(f'loop#{loop}/{loop_sn}, There are {len(arg_list):02} args for bin:{bin_col}, blk:{blk_id:06},{sn:03}/{len(miss):03}')
-                            score_list = estimate_arg(blk_id, arg_list)
-                            score_list_binid.append(score_list)
                     return pd.concat(score_list_binid)
                 except Exception as e:
                     logger.exception(e)

@@ -29,45 +29,45 @@ def get_miss_blocks_ex():
 def get_wtid_list_by_bin_id(bin_id, bin_count):
     df = get_miss_blocks_ex(bin_count) #get_wtid_list_by_bin_id
     return df.loc[df.bin_id==bin_id].wtid.drop_duplicates().values
-
-@timed()
-@lru_cache(maxsize=32)
-def get_train_sample_list(bin_id, col, file_num, window,
-                          related_col_count,drop_threshold,enable_time,
-                          shift=0, after=True):
-    arg_loc = locals()
-
-    # set_list = set_list.split(',')
-    # set_list = [int(item) for item in set_list]
-
-    # args = DefaultMunch(None, json.loads(args_json))
-    feature_list = []
-
-    block_all = get_blocks()
-
-    bin_num = check_options().bin_count
-    block_missing = get_miss_blocks_ex(bin_num) #get_train_sample_list
-
-
-    wtid_list = get_wtid_list_by_bin_id(bin_id,bin_num)
-    missing_block = block_missing.loc[(block_missing.wtid.isin(wtid_list)) & (block_missing.bin_id == bin_id)
-                                      & (block_missing.col == col) & (block_missing.kind == 'missing')]
-    #Only take part of data to validate
-    if len(missing_block) > 0:
-        df_len = int(min((max(len(missing_block) * 0.1, 10)), len(missing_block)))
-        logger.info(f'Only select {int(df_len):02} from {len(missing_block):03} for:{arg_loc}')
-        missing_block = missing_block.sample(df_len,  random_state=1)
-    else:
-        logger.warning(f'No block for:{arg_loc}')
-    for miss_blk_id, blk in missing_block.iterrows():
-        train_feature, val_feature, index = get_train_val(miss_blk_id,file_num, window,
-                                                          related_col_count,drop_threshold,enable_time,
-                                                          shift, direct='down')
-        feature_list.append((train_feature, val_feature, miss_blk_id))
-    if len(feature_list) == 0:
-        logger.warning(f'Can not find row for:{arg_loc}')
-
-    return feature_list
+#
+# @timed()
+# @lru_cache(maxsize=32)
+# def get_train_sample_list(bin_id, col, file_num, window,
+#                           related_col_count,drop_threshold,enable_time,
+#                           shift=0, after=True):
+#     arg_loc = locals()
+#
+#     # set_list = set_list.split(',')
+#     # set_list = [int(item) for item in set_list]
+#
+#     # args = DefaultMunch(None, json.loads(args_json))
+#     feature_list = []
+#
+#     block_all = get_blocks()
+#
+#     bin_num = check_options().bin_count
+#     block_missing = get_miss_blocks_ex(bin_num) #get_train_sample_list
+#
+#
+#     wtid_list = get_wtid_list_by_bin_id(bin_id,bin_num)
+#     missing_block = block_missing.loc[(block_missing.wtid.isin(wtid_list)) & (block_missing.bin_id == bin_id)
+#                                       & (block_missing.col == col) & (block_missing.kind == 'missing')]
+#     #Only take part of data to validate
+#     if len(missing_block) > 0:
+#         df_len = int(min((max(len(missing_block) * 0.1, 10)), len(missing_block)))
+#         logger.info(f'Only select {int(df_len):02} from {len(missing_block):03} for:{arg_loc}')
+#         missing_block = missing_block.sample(df_len,  random_state=1)
+#     else:
+#         logger.warning(f'No block for:{arg_loc}')
+#     for miss_blk_id, blk in missing_block.iterrows():
+#         train_feature, val_feature, index = get_train_val(miss_blk_id,file_num, window,
+#                                                           related_col_count,drop_threshold,enable_time,
+#                                                           shift, direct='down')
+#         feature_list.append((train_feature, val_feature, miss_blk_id))
+#     if len(feature_list) == 0:
+#         logger.warning(f'Can not find row for:{arg_loc}')
+#
+#     return feature_list
 
 
 
@@ -206,7 +206,7 @@ def estimate_score(version):
     for bin_id in range(10):
         from core.merge_multiple_file import select_col
         logger.info(f'bin_id:{bin_id} is done')
-        for col_name in select_col:
+        for col_name in get_predict_col():
             arg = get_best_arg_by_blk(bin_id,col_name, class_name='lr',direct='down', shift=0, version=version)
             df = df.append(arg)
     return df
@@ -520,7 +520,8 @@ def get_args_all(col_name):
                                             'time_sn': time_sn,
                                             'class_name': class_name,
                                             'n_estimators':0 if class_name =='lr' else 400,
-                                            'max_depth':0 if class_name == 'lr' else 3
+                                            'max_depth':0 if class_name == 'lr' else 3,
+                                            'col_per':1,
                                             }
                                     # args = DefaultMunch(None, args)
                                     # arg_list.append(args)
@@ -587,7 +588,10 @@ def get_args_transfer(bin_id, col_name):
         tmp_score = pd.read_hdf(f'./imp/{file}')
         transfer_args =  tmp_score[ tmp_score.bin_id.isin([bin_id-1, bin_id, bin_id+1])
                           &  (tmp_score.col_name==col_name)]
+        if 'col_per' not in transfer_args.columns:
+            transfer_args['col_per'] = 1
         arg_list.append(transfer_args[model_paras])
+
     return pd.concat(arg_list)
 
 
@@ -612,6 +616,15 @@ def get_args_extend(best :pd.Series, para_name=None ):
         tmp = best.copy()
         tmp.momenta_col_length = momenta_col_length
         args = args.append(tmp)
+
+
+    old_val = best.col_per
+    col_count = best.file_num * best.related_col_count
+    if col_count > 5:
+        for ratio in [-4, -3, -2, -1, 1, 2]:
+            tmp = best.copy()
+            tmp['col_per'] = min(1, max(0.1, old_val + 0.05* ratio))
+            args = args.append(tmp)
 
     if  'file_num' in para_name_list:
         old_val = best.file_num
@@ -693,6 +706,9 @@ def check_options():
     parser.add_argument("--check_gap", type=int, default=15, help="Mins to lock the score file")
     parser.add_argument("--gp_name", type=str, default='lr_bin_9', help="The folder name to save score")
     parser.add_argument("--shift", type=int, default=0,  help="The folder name to save score")
+    parser.add_argument("--col_count", type=int, default=100, help="how many columns need to predict")
+
+    parser.add_argument("--lr", type=float, default=100, help="how many columns need to predict")
 
     parser.add_argument("--class_name", type=str, default='lr', help="The folder name to save score")
 
@@ -701,6 +717,7 @@ def check_options():
     parser.add_argument("-D", '--debug', action='store_true', default=False)
     parser.add_argument("-W", '--warning', action='store_true', default=False)
     parser.add_argument("-L", '--log', action='store_true', default=False)
+
 
     if local:
         thread_num = 1
