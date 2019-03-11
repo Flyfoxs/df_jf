@@ -74,12 +74,12 @@ def gen_best(count_columns):
 
     from core.check import get_miss_blocks_ex
 
-    snap = pd.read_hdf('./imp/v3.h5')
+    snap = pd.read_hdf('./imp/v4.0.h5')
 
     arg_list = []
     for col_name in imp_list:
 
-        for bin_id in range(check_options().bin_count):
+        for bin_id in snap.bin_id.drop_duplicates():
             blk_list = get_miss_blocks_ex()
             blk_list = blk_list.loc[
                 (blk_list.kind=='missing') &
@@ -95,8 +95,9 @@ def gen_best(count_columns):
             for blk_id in blk_list.index:
                 best = best.copy()
                 best['blk_id']  =blk_id
+                #best['bin_id'] = bin_id
                 #TODO
-                #best['col_per'] = 0.85
+                best['col_per'] = 1
                 arg_list.append(best)
 
     logger.info(f'There are {len(arg_list)} blockid need to process')
@@ -117,6 +118,7 @@ def get_existing_blks():
 
 if __name__ == '__main__':
     """
+    rm -rf output/blocks/var0*
     nohup python ./core/merge.py --col_count 4 > merge_$(hostname).log 2>&1 &
     """
 

@@ -13,18 +13,30 @@ from core.predict import *
 
 @lru_cache()
 def get_miss_blocks_ex():
-    bins=check_options().bin_count
+    bins = 9
+    max_sub_size = 40
     blks = get_blocks()
-    blks['bin_des'] = None
-    blks['bin_id'] = None
+    blks['p_bin_des'] = None
+    blks['p_bin_id'] = None
     bk_list = []
     for col_name in get_predict_col():
         blks_tmp = blks.loc[(blks.kind == 'missing')]
         blks_tmp = blks_tmp.loc[(blks.col == col_name) & (blks.kind == 'missing')]  # & (blks.wtid==1)
-        blks_tmp['bin_id'] = pd.cut(blks_tmp.length, bins).cat.codes
+        blks_tmp['p_bin_id'] = pd.qcut(blks_tmp.length, bins).cat.codes
+        # blks_tmp['sub_bin_id'] = None
+        # for p_bin_id in range(bins):
+        #     sub_len = len(blks_tmp.loc[blks_tmp.p_bin_id == p_bin_id])
+        #     blks_tmp.loc[blks_tmp.p_bin_id == p_bin_id, 'sub_bin_id'] = \
+        #         pd.qcut(blks_tmp.loc[blks_tmp.p_bin_id == p_bin_id].time_begin,
+        #                 min(max(1, sub_len // max_sub_size), 10)).cat.codes
+
+        #blks_tmp['bin_id'] = blks_tmp['p_bin_id'] * 10 + blks_tmp['sub_bin_id']
+        blks_tmp['bin_id'] = blks_tmp['p_bin_id']
         bk_list.append(blks_tmp)
+
     blks = pd.concat(bk_list)
     return blks
+
 
 def get_wtid_list_by_bin_id(bin_id, bin_count):
     df = get_miss_blocks_ex(bin_count) #get_wtid_list_by_bin_id
@@ -70,75 +82,75 @@ def get_wtid_list_by_bin_id(bin_id, bin_count):
 #     return feature_list
 
 
-
-@timed()
-def check_score(args, shift):
-    """
-
-    :param wtid:
-    :param col:
-    :param args:
-        window:[0.5-n]
-        momenta_col_length:[1-100]
-        momenta_impact:[100-400]
-        input_file_num:[1-n]
-        related_col_count:[0-n]
-        time_sn:True/False
-        class:lr, deploy, gasion
-    :param pic:
-    :return:
-    """
-    import matplotlib.pyplot as plt
-
-    bin_id = args['bin_id']
-    col = args['col_name']
-
-    enable_time = True if args.time_sn > 0 else False
-
-    train_list = get_train_sample_list(bin_id, col, int(args.file_num), round(args.window,1),
-                                       int(args.related_col_count), args.drop_threshold, enable_time,
-                                       shift, )
-
-    count, loss = 0, 0
-
-    min_len, max_len, = 999999999 , 0
-
-    block_count = len(train_list)
-
-    for train, val, blockid in train_list :
-        min_len = min(min_len, len(val))
-        max_len = max(max_len, len(val))
-
-        is_enum = True if 'int' in date_type[col].__name__ else False
-        logger.debug(f'====={type(train)}, {type(val)}, {blockid}')
-        logger.debug(f'Blockid#{blockid}, train:{train.shape}, val:{val.shape}, file_num:{args.file_num}')
-        args['blk_id']=blockid
-        check_fn = get_predict_fun(train, args)
-
-        # if pic_num:
-        #     plt.figure(figsize=(20, 5))
-        #     for color, data in zip(['#ff7f0e', '#2ca02c'], [train, val]):
-        #         plt.scatter(data.time_sn, data[col], c=color)
-        #
-        #     x = np.linspace(train.time_sn.min(), train.time_sn.max(), 10000)
-        #     plt.plot(x, check_fn(x))
-        #     plt.show()
-        try:
-            val_res = check_fn(val.iloc[:, 1:])
-        except Exception as e:
-            logger.error(f'Process blockid#{blockid} incorrect, val:{val.columns}')
-            raise e
-
-        #logger.debug(f'shape of predict output {val_res.shape}, with paras:{local_args}')
-        cur_count, cur_loss = score(val[col], val_res, is_enum)
-
-        loss += cur_loss
-        count += cur_count
-        logger.debug(f'blockid:{blockid}, {train.shape}, {val.shape}, score={round(cur_loss/cur_count,3)}')
-    # avg_loss = round(loss/count, 4)
-
-    return loss, count, min_len, max_len , block_count
 #
+# @timed()
+# def check_score(args, shift):
+#     """
+#
+#     :param wtid:
+#     :param col:
+#     :param args:
+#         window:[0.5-n]
+#         momenta_col_length:[1-100]
+#         momenta_impact:[100-400]
+#         input_file_num:[1-n]
+#         related_col_count:[0-n]
+#         time_sn:True/False
+#         class:lr, deploy, gasion
+#     :param pic:
+#     :return:
+#     """
+#     import matplotlib.pyplot as plt
+#
+#     bin_id = args['bin_id']
+#     col = args['col_name']
+#
+#     enable_time = True if args.time_sn > 0 else False
+#
+#     train_list = get_train_sample_list(bin_id, col, int(args.file_num), round(args.window,1),
+#                                        int(args.related_col_count), args.drop_threshold, enable_time,
+#                                        shift, )
+#
+#     count, loss = 0, 0
+#
+#     min_len, max_len, = 999999999 , 0
+#
+#     block_count = len(train_list)
+#
+#     for train, val, blockid in train_list :
+#         min_len = min(min_len, len(val))
+#         max_len = max(max_len, len(val))
+#
+#         is_enum = True if 'int' in date_type[col].__name__ else False
+#         logger.debug(f'====={type(train)}, {type(val)}, {blockid}')
+#         logger.debug(f'Blockid#{blockid}, train:{train.shape}, val:{val.shape}, file_num:{args.file_num}')
+#         args['blk_id']=blockid
+#         check_fn = get_predict_fun(train, args)
+#
+#         # if pic_num:
+#         #     plt.figure(figsize=(20, 5))
+#         #     for color, data in zip(['#ff7f0e', '#2ca02c'], [train, val]):
+#         #         plt.scatter(data.time_sn, data[col], c=color)
+#         #
+#         #     x = np.linspace(train.time_sn.min(), train.time_sn.max(), 10000)
+#         #     plt.plot(x, check_fn(x))
+#         #     plt.show()
+#         try:
+#             val_res = check_fn(val.iloc[:, 1:])
+#         except Exception as e:
+#             logger.error(f'Process blockid#{blockid} incorrect, val:{val.columns}')
+#             raise e
+#
+#         #logger.debug(f'shape of predict output {val_res.shape}, with paras:{local_args}')
+#         cur_count, cur_loss = score(val[col], val_res, is_enum)
+#
+#         loss += cur_loss
+#         count += cur_count
+#         logger.debug(f'blockid:{blockid}, {train.shape}, {val.shape}, score={round(cur_loss/cur_count,3)}')
+#     # avg_loss = round(loss/count, 4)
+#
+#     return loss, count, min_len, max_len , block_count
+# #
 # @lru_cache()
 # def get_closed_wtid_list(wtid):
 #
@@ -203,7 +215,9 @@ def estimate_score(version):
     # blk_list = get_blocks()
     # blk_list = blk_list.loc[blk_list.wtid == 1]
     df = pd.DataFrame()
-    for bin_id in range(10):
+    bin_list = get_miss_blocks_ex().bin_id.drop_duplicates()
+    bin_list = sorted(list(bin_list))
+    for bin_id in bin_list:
         from core.merge_multiple_file import select_col
         logger.info(f'bin_id:{bin_id} is done')
         for col_name in get_predict_col():
@@ -215,80 +229,80 @@ def get_high_priority_col(top_n):
     tmp = estimate_score(0, 'lr_bin_9')
     tmp = tmp.groupby('col_name').agg({'score': ['min', 'max']}).sort_values(('score', 'min'))
     return list(tmp.index)[:top_n]
-
-def get_args_dynamic(col_name, force=False):
-    dynamic_args = pd.DataFrame()
-
-    if not check_options().dynamic and force==False:
-        return dynamic_args
-
-    is_enum = True if 'int' in date_type[col_name].__name__ else False
-
-    if is_enum:
-        return pd.DataFrame()
-
-    gp_name = check_options().gp_name
-    try:
-        tmp = estimate_score(0, gp_name) #get_args_dynamic
-        tmp = tmp.loc[(tmp.col_name == col_name)][model_paras].drop_duplicates()
-    except Exception as e:
-        logger.warning(e)
-        return pd.DataFrame()
-
-    if tmp is None or len(tmp) == 0:
-        logger.warning(f'Can not find dynamic arg for {col_name}, {gp_name}')
-        return pd.DataFrame()
-
-    for sn, arg in tmp.iterrows():
-        # File
-        arg_tmp = arg.copy()
-
-        #Existing
-        dynamic_args.append(arg_tmp, ignore_index=True)
-
-        arg_tmp.file_num = max(1, arg_tmp.file_num - 1)
-        dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
-
-        arg_tmp = arg.copy()
-        arg_tmp.file_num = arg_tmp.file_num + 1
-        dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
-
-        # arg_tmp = arg.copy()
-        # arg_tmp.file_num = arg_tmp.file_num + 2
-        # dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
-
-        # Window
-        if arg.window >= 1 and arg.window <= 6:
-            ratio = 2
-        elif arg.window < 1:
-            ratio = 1
-        else:
-            ratio = 0
-
-        arg_tmp = arg.copy()
-        dynamic_args.append(arg_tmp, ignore_index=True)
-
-        arg_tmp.window = max(0.1, arg_tmp.window - 0.1 * ratio)
-        dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
-
-        # arg_tmp = arg.copy()
-        # arg_tmp.window = max(0.1, arg_tmp.window - 0.2 * ratio)
-        # dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
-
-        arg_tmp = arg.copy()
-        arg_tmp.window = arg_tmp.window + 0.1 * ratio
-        dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
-
-        # arg_tmp = arg.copy()
-        # arg_tmp.window = arg_tmp.window + 0.2 * ratio
-        # dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
-
-    todo = dynamic_args
-    #Can not disable time_sn, if only one file and no related_col
-    todo.loc[(todo.file_num==1) &(todo.related_col_count==0) , 'time_sn'] = 1
-    todo = todo.drop_duplicates()
-
-    return todo
+#
+# def get_args_dynamic(col_name, force=False):
+#     dynamic_args = pd.DataFrame()
+#
+#     if not check_options().dynamic and force==False:
+#         return dynamic_args
+#
+#     is_enum = True if 'int' in date_type[col_name].__name__ else False
+#
+#     if is_enum:
+#         return pd.DataFrame()
+#
+#     gp_name = check_options().gp_name
+#     try:
+#         tmp = estimate_score(0, gp_name) #get_args_dynamic
+#         tmp = tmp.loc[(tmp.col_name == col_name)][model_paras].drop_duplicates()
+#     except Exception as e:
+#         logger.warning(e)
+#         return pd.DataFrame()
+#
+#     if tmp is None or len(tmp) == 0:
+#         logger.warning(f'Can not find dynamic arg for {col_name}, {gp_name}')
+#         return pd.DataFrame()
+#
+#     for sn, arg in tmp.iterrows():
+#         # File
+#         arg_tmp = arg.copy()
+#
+#         #Existing
+#         dynamic_args.append(arg_tmp, ignore_index=True)
+#
+#         arg_tmp.file_num = max(1, arg_tmp.file_num - 1)
+#         dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
+#
+#         arg_tmp = arg.copy()
+#         arg_tmp.file_num = arg_tmp.file_num + 1
+#         dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
+#
+#         # arg_tmp = arg.copy()
+#         # arg_tmp.file_num = arg_tmp.file_num + 2
+#         # dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
+#
+#         # Window
+#         if arg.window >= 1 and arg.window <= 6:
+#             ratio = 2
+#         elif arg.window < 1:
+#             ratio = 1
+#         else:
+#             ratio = 0
+#
+#         arg_tmp = arg.copy()
+#         dynamic_args.append(arg_tmp, ignore_index=True)
+#
+#         arg_tmp.window = max(0.1, arg_tmp.window - 0.1 * ratio)
+#         dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
+#
+#         # arg_tmp = arg.copy()
+#         # arg_tmp.window = max(0.1, arg_tmp.window - 0.2 * ratio)
+#         # dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
+#
+#         arg_tmp = arg.copy()
+#         arg_tmp.window = arg_tmp.window + 0.1 * ratio
+#         dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
+#
+#         # arg_tmp = arg.copy()
+#         # arg_tmp.window = arg_tmp.window + 0.2 * ratio
+#         # dynamic_args = dynamic_args.append(arg_tmp, ignore_index=True)
+#
+#     todo = dynamic_args
+#     #Can not disable time_sn, if only one file and no related_col
+#     todo.loc[(todo.file_num==1) &(todo.related_col_count==0) , 'time_sn'] = 1
+#     todo = todo.drop_duplicates()
+#
+#     return todo
 
 
 
@@ -319,11 +333,12 @@ def get_momenta_impact(col_name):
         return [0.1,0.3]
 
 def get_time_sn(col_name):
-    is_enum = True if 'int' in date_type[col_name].__name__ else False
-    if is_enum:
-        return [False]
-    else:
-        return [True, False]
+    return [True]
+    # is_enum = True if 'int' in date_type[col_name].__name__ else False
+    # if is_enum:
+    #     return [False]
+    # else:
+    #     return [True, False]
 
 @lru_cache()
 def get_file_num(col_name):
@@ -334,7 +349,7 @@ def get_file_num(col_name):
         return [1,4]
 
 def get_drop_threshold(col_name):
-    return [0.85, 0.9]
+    return [0.85]
 
 def get_related_col_count(col_name):
     return [0]
@@ -618,13 +633,13 @@ def get_args_extend(best :pd.Series, para_name=None ):
         args = args.append(tmp)
 
 
-    old_val = best.col_per
-    col_count = best.file_num * best.related_col_count
-    if col_count > 5:
-        for ratio in [-4, -3, -2, -1, 1, 2]:
-            tmp = best.copy()
-            tmp['col_per'] = min(1, max(0.1, old_val + 0.05* ratio))
-            args = args.append(tmp)
+    #
+    # for ratio in [1, 0.95, 0.9, 0.85, 0.8]:
+    #     tmp = best.copy()
+    #     tmp['file_num'] = int(min(25,tmp.file_num * 2))
+    #     tmp['related_col_count'] = 2
+    #     tmp['col_per'] = ratio
+    #     args = args.append(tmp)
 
     if  'file_num' in para_name_list:
         old_val = best.file_num

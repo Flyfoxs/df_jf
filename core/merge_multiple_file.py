@@ -17,47 +17,47 @@ config={
     'var037': [(new_file,1)],
     'var062': [(new_file,1)],
     'var012': [(new_file,1)],
-#
-    # 'var007': [(new_file,1)],
-    # 'var014': [(new_file, 1)],
-    # 'var001': [(new_file, 1)],
-    # 'var022': [(new_file, 1)],
-    # 'var029': [(new_file, 1)],
-    # 'var038': [(new_file, 1)],
-    # 'var005': [(new_file, 1)],
-    # 'var028': [(new_file, 1)],
-    #
-    # 'var006': [(new_file, 1)],
-    # 'var011': [(new_file, 1)],
-    # 'var057': [(new_file, 1)],
-    # 'var055': [(new_file, 1)],
-    # 'var051': [(new_file, 1)],
-    # 'var024': [(new_file, 1)],
-    # 'var035': [(new_file, 1)],
-    # 'var045': [(new_file, 1)],
-    # 'var052': [(new_file, 1)],
-    # 'var003': [(new_file, 1)],
-    # 'var040': [(new_file, 1)],
-    # 'var033': [(new_file, 1)],
-    # 'var002': [(new_file, 1)],
-    # 'var030': [(new_file, 1)],
-    # 'var021': [(new_file, 1)],
-    # 'var056': [(new_file, 1)],
-    # 'var060': [(new_file, 1)],
-    # 'var036': [(new_file, 1)], #30
-    # #'var053' : [('0.67950475000.csv', 1)], Drop
-    #
-    #
-    # #'var016': [('0.67950475000.csv', 1)],#Drop 31, int
-    # #'var066': [('0.67950475000.csv', 1)],#Drop 32, int
-    # 'var019': [(new_file, 1)], #33
-    # #'var059': [('0.67950475000.csv', 1)],#Drop 34
-    # 'var065': [(new_file, 1)], #35
-    # #'var053': [('0.67950475000.csv', 1)], Drop, int
-    # #'var018': [('0.67950475000.csv', 1)], Drop
-    # #'var047': [('0.67950475000.csv', 1)], #36 , int
-    #
-    #
+
+    'var007': [(new_file,1)],
+    'var014': [(new_file, 1)],
+    'var001': [(new_file, 1)],
+    'var022': [(new_file, 1)],
+    'var029': [(new_file, 1)],
+    'var038': [(new_file, 1)],
+    'var005': [(new_file, 1)],
+    'var028': [(new_file, 1)],
+
+    'var006': [(new_file, 1)],
+    'var011': [(new_file, 1)],
+    'var057': [(new_file, 1)],
+    'var055': [(new_file, 1)],
+    'var051': [(new_file, 1)],
+    'var024': [(new_file, 1)],
+    'var035': [(new_file, 1)],
+    'var045': [(new_file, 1)],
+    'var052': [(new_file, 1)],
+    'var003': [(new_file, 1)],
+    'var040': [(new_file, 1)],
+    'var033': [(new_file, 1)],
+    'var002': [(new_file, 1)],
+    'var030': [(new_file, 1)],
+    'var021': [(new_file, 1)],
+    'var056': [(new_file, 1)],
+    'var060': [(new_file, 1)],
+    'var036': [(new_file, 1)], #30
+    #'var053' : [('0.67950475000.csv', 1)], Drop
+
+
+    #'var016': [('0.67950475000.csv', 1)],#Drop 31, int
+    #'var066': [('0.67950475000.csv', 1)],#Drop 32, int
+    'var019': [(new_file, 1)], #33
+    #'var059': [('0.67950475000.csv', 1)],#Drop 34
+    'var065': [(new_file, 1)], #35
+    #'var053': [('0.67950475000.csv', 1)], Drop, int
+    #'var018': [('0.67950475000.csv', 1)], Drop
+    #'var047': [('0.67950475000.csv', 1)], #36 , int
+
+
 
     ##Test
     #'var018':[('0.67950475000.csv',1), ('0.67950475000.csv',1), ('0.67950475000.csv',1)],

@@ -271,7 +271,7 @@ def gen_best_sub(best_arg):
     predict_res = pd.Series(predict_res, index=sub.index)
     logger.debug(f'sub={sub.shape}, predict_res={predict_res.shape}, type={type(predict_res)}')
 
-    file_csv = f'{file_prefix}_{score_avg:.4f}_{score_std:.4f}_{bin_id}.csv'
+    file_csv = f'{file_prefix}_{score_avg:.4f}_{score_std:.4f}_{bin_id:02}.csv'
     logger.info(f'Result will save to:{file_csv}')
     predict_res.to_csv(file_csv)
     return score_avg
@@ -288,7 +288,7 @@ def process_blk_id(bin_col):
     reuse_existing = False
     lock_mins = 10
     try:
-        with factory.create_lock(bin_col, ttl=1000*60 *lock_mins):
+        with factory.create_lock(str(bin_col), ttl=1000*60 *lock_mins):
                 is_continue = check_last_time_by_binid(bin_id, col_name, lock_mins)
                 if not is_continue:
                     logger.warning(f'The binid#{bin_col} is still in processed in {lock_mins} mins')
@@ -370,12 +370,14 @@ def main():
                             #(blk_list.wtid==1) &
                             (blk_list.col.isin(imp_list))] #'var004',
 
+    blk_list = blk_list.drop_duplicates(['bin_id', 'col'])
+
     para_list = set([])
     for sn, row in blk_list.iterrows():
         para_list.add((row.bin_id, row.col, shift))
 
     try:
-        pool = ThreadPool(10)
+        pool = ThreadPool(thred_num)
         logger.info(f'There are {len(para_list)} para need to process')
         pool.map(process_blk_id, para_list, chunksize=np.random.randint(1,64))
 

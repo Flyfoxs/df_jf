@@ -42,7 +42,7 @@ def get_sub_template():
         train = train.set_index(['ts', 'wtid'])
         train = train[train.index.isin(template.index)]
         template = template.combine_first(train)
-        logger.debug(f'wtid={wtid}, {template.shape}, {train.shape},')
+        logger.info(f'wtid={wtid}, {template.shape}, {train.shape},')
     template = template.reset_index()
     template = template.sort_values(['wtid', 'ts', ])
     return template
@@ -954,7 +954,10 @@ def get_max_related_ration(wtid, col_name):
 
 if __name__ == '__main__':
     pass
-    # get_closed_col_ratio_df()
+    """
+    need to cache
+    """
+    get_sub_template()
     get_template_with_position()
 
 
