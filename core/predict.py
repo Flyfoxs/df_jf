@@ -364,7 +364,7 @@ def main():
 
 
     from core.merge_multiple_file import select_col
-    imp_list =  select_col
+    imp_list =  select_col[:check_options().col_count]
     blk_list = get_miss_blocks_ex()
     blk_list = blk_list.loc[#(blk_list.kind=='missing') &
                             #(blk_list.wtid==1) &
@@ -372,13 +372,15 @@ def main():
 
     blk_list = blk_list.drop_duplicates(['bin_id', 'col'])
 
-    para_list = set([])
+    para_list = []
     for sn, row in blk_list.iterrows():
         para_list.add((row.bin_id, row.col, shift))
 
+    para_list = sorted(para_list, key=lambda val: val[0], reverse=True)
+
     try:
         pool = ThreadPool(thred_num)
-        logger.info(f'There are {len(para_list)} para need to process')
+        logger.info(f'There are {len(para_list)} para need to process for:col({len(imp_list)}): {imp_list}, {thred_num} threds')
         pool.map(process_blk_id, para_list, chunksize=np.random.randint(1,64))
 
     except Exception as e:
@@ -397,7 +399,8 @@ if __name__ == '__main__':
     # get_train_val_range_left(106245, 2.9)
 
     """
-    nohup python ./core/predict.py > predict_2.log 2>&1 &
+  
+    nohup python ./core/predict.py --col_count 4 > predict_4.log 2>&1 &
     
     nohup python ./core/predict.py 1 > predict_1.log 2>&1 &
     """

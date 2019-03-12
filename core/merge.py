@@ -74,7 +74,7 @@ def gen_best(count_columns):
 
     from core.check import get_miss_blocks_ex
 
-    snap = pd.read_hdf('./imp/v4.0.h5')
+    snap = pd.read_hdf('./imp/v3.3.h5')
 
     arg_list = []
     for col_name in imp_list:
@@ -118,6 +118,7 @@ def get_existing_blks():
 
 if __name__ == '__main__':
     """
+    #0.63397956000
     rm -rf output/blocks/var0*
     nohup python ./core/merge.py --col_count 4 > merge_$(hostname).log 2>&1 &
     """

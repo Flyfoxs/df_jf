@@ -9,7 +9,7 @@ from core.feature import *
 import contextlib
 
 
-version = 5
+version = 3
 @contextlib.contextmanager
 def named_lock(db_session, name, timeout):
     """Get a named mysql lock on a DB session
@@ -202,9 +202,13 @@ def get_args_existing_by_blk(bin_id, col_name, class_name=None, direct=None, shi
 def get_best_arg_by_blk(bin_id,col_name, class_name=None,direct=None, top=0, shift=0, version=version):
     args = get_args_existing_by_blk(bin_id, col_name, class_name,direct, shift, version)
     if args is not None and len(args)>1:
-        args = args.reset_index().sort_values(['score_mean', 'score_std'], ascending=[False,True])#.head(10)
+        count_blk_mean = args.count_blk.mean()
+        # Filter exception record, such as kill
+        args = args.loc[args.count_blk >= count_blk_mean]
+        args = args.reset_index().sort_values(['score_mean', 'file_num', 'window', 'momenta_impact', 'score_std'], ascending=[False,True, True, True,True])#.head(10)
         #args = args.sort_values('score_std')
         args['bin_id']=bin_id
+        args['cnt_blk_max'] = args.count_blk.max()
         return args.iloc[top]
     else:
         return None

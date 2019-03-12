@@ -22,7 +22,7 @@ def get_miss_blocks_ex():
     for col_name in get_predict_col():
         blks_tmp = blks.loc[(blks.kind == 'missing')]
         blks_tmp = blks_tmp.loc[(blks.col == col_name) & (blks.kind == 'missing')]  # & (blks.wtid==1)
-        blks_tmp['p_bin_id'] = pd.qcut(blks_tmp.length, bins).cat.codes
+        blks_tmp['p_bin_id'] = pd.cut(blks_tmp.length, bins).cat.codes
         # blks_tmp['sub_bin_id'] = None
         # for p_bin_id in range(bins):
         #     sub_len = len(blks_tmp.loc[blks_tmp.p_bin_id == p_bin_id])
@@ -645,7 +645,7 @@ def get_args_extend(best :pd.Series, para_name=None ):
         old_val = best.file_num
         for ratio in [-2, -1, 1, 2,3,4,5]:
             tmp = best.copy()
-            tmp.file_num = max(1,old_val + ratio)
+            tmp.file_num = min(20,max(1,old_val + ratio))
             args = args.append(tmp)
         for file in range(1,5):
             tmp = best.copy()
