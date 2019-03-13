@@ -155,10 +155,15 @@ def _predict_data_block(train_df, val_df, arg):
         #print('=====', type(cur_loss), type(cur_count))
         logger.info(f'{is_enum},{cur_loss}, {cur_count}, {arg}, ')
         if arg.blk_id is not None:
+
             arg['score'] = round(cur_loss / cur_count, 4)
             arg['score_total'] = cur_loss
             arg['score_count'] = cur_count
-            insert(arg)
+            if arg['direct'] == 'down':
+                insert(arg)
+            elif arg['direct'] == 'up':
+                update(arg)
+
             #score_df = score_df.append(args, ignore_index=True)
     else:
         logger.error(f'blk_id:{arg.blk_id},{col_name}....\n{val_df.loc[:, col_name]}')
@@ -279,14 +284,14 @@ def gen_best_sub(best_arg):
 
 @timed()
 def process_blk_id(bin_col):
-    bin_id, col_name, shift = bin_col
-    direct = 'down'
+    bin_id, col_name, shift, direct  = bin_col
+
     from core.check import check_options, get_miss_blocks_ex
 
     #wtid = cur_block.wtid
     class_name = check_options().class_name
     reuse_existing = False
-    lock_mins = 10
+    lock_mins = 200
     try:
         with factory.create_lock(str(bin_col), ttl=1000*60 *lock_mins):
                 is_continue = check_last_time_by_binid(bin_id, col_name, lock_mins)
@@ -295,61 +300,100 @@ def process_blk_id(bin_col):
                     return 'In processing'
 
                 try:
-                    score_list_binid = []
-                    loop_sn = 2 + (bin_id//2)
-                    for loop in range(loop_sn):
-                        from core.check import get_args_all, get_args_extend, get_args_transfer
-                        todo = get_args_all(col_name)
-                        #Shift always zero, so other shift can reuse the best args from shift#0
-                        best = get_best_arg_by_blk(bin_id, col_name, class_name,direct, shift=0)
-                        if best is not None and len(best) > 0 : # and cur_block.length > 10:
-                            extend_args = get_args_extend(best)
-                            todo = pd.concat([todo, extend_args])
-
-                        tranfer = get_args_transfer(bin_id, col_name)
-
-                        todo = pd.concat([todo,tranfer])
-
-                        arg_list = get_args_missing_by_blk(todo, bin_id, col_name, shift)
-
-
-                        if len(arg_list) == 0:
-                            logger.warning(f'loop#{loop}/{loop_sn},No missing arg is found from todo:{len(todo)} for blk:{bin_col}')
-                            return 0
-
-
-                        #Estimate by blk_list
-                        miss = get_miss_blocks_ex()
-                        miss = miss.loc[(miss.col==col_name ) & (miss.bin_id==bin_id)]
-                        for sn, blk_id in enumerate(list(miss.index)):
-                            # if len(miss)<=10 and bin_id >=5 :
-                            #     direct_list = ['down', 'up']
-                            # else:
-                            #     direct_list =
-                            blk = get_blocks()
-                            cur_block = blk.iloc[blk_id]
-                            for direct in ['down']:
-                                arg_list['bin_id'] = bin_id
-                                arg_list['blk_id'] = blk_id
-                                arg_list['wtid'] = cur_block.wtid
-                                arg_list['direct'] = direct
-                                arg_list['shift'] = int(shift)
-
-                                # logger.info(arg_list)
-                                logger.info(f'loop#{loop}/{loop_sn}, direct:{direct}, There are {len(arg_list):02} args for bin:{bin_col}, blk:{blk_id:06},{sn:03}/{len(miss):03}')
-                                score_list = estimate_arg(blk_id, arg_list)
-                                score_list_binid.append(score_list)
-
-                    return pd.concat(score_list_binid)
+                    if direct=='down':
+                        return train(bin_id, class_name, col_name, direct, shift)
+                    else:
+                        return validate(bin_id, class_name, col_name, direct, shift)
                 except Exception as e:
                     logger.exception(e)
-                    logger.error(f'Error when process blkid:{blk_id}')
+                    logger.error(f'Error when process blkid:{bin_col}')
                 #his_df = heart_beart(file,f'Done, {len(score_df)}, top_n#{top_n}, wtid:{wtid}')
                 #score_df.to_hdf(file, 'score', mode='w')
                 #his_df.to_hdf(file, 'his')
     except RedLockError as e:
         logger.info(f'Not get the lock for :{bin_col}')
         return 'No Lock'
+
+
+def train(bin_id, class_name, col_name, direct, shift):
+    local_args = locals()
+    score_list_binid = []
+    loop_sn = 2 + (bin_id // 2)
+    for loop in range(loop_sn):
+        from core.check import get_args_all, get_args_extend, get_args_transfer
+        todo = get_args_all(col_name)
+        # Shift always zero, so other shift can reuse the best args from shift#0
+        best = get_best_arg_by_blk(bin_id, col_name, class_name, direct, shift=0)
+        if best is not None and len(best) > 0:  # and cur_block.length > 10:
+            extend_args = get_args_extend(best.iloc[0])
+            todo = pd.concat([todo, extend_args])
+
+        tranfer = get_args_transfer(bin_id, col_name)
+
+        todo = pd.concat([todo, tranfer])
+
+        arg_list = get_args_missing_by_blk(todo, bin_id, col_name, shift)
+
+        if len(arg_list) == 0:
+            logger.warning(f'loop#{loop}/{loop_sn},No missing arg is found from todo:{len(todo)} for blk:{local_args}')
+            return 0
+
+        # Estimate by blk_list
+        from core.check import check_options, get_miss_blocks_ex
+        miss = get_miss_blocks_ex()
+        miss = miss.loc[(miss.col == col_name) & (miss.bin_id == bin_id)]
+        for sn, blk_id in enumerate(list(miss.index)):
+            # if len(miss)<=10 and bin_id >=5 :
+            #     direct_list = ['down', 'up']
+            # else:
+            #     direct_list =
+            blk = get_blocks()
+            cur_block = blk.iloc[blk_id]
+            for direct_cur in [direct]:
+                arg_list['bin_id'] = bin_id
+                arg_list['blk_id'] = blk_id
+                arg_list['wtid'] = cur_block.wtid
+                arg_list['direct'] = direct_cur
+                arg_list['shift'] = int(shift)
+
+                # logger.info(arg_list)
+                logger.info(
+                    f'loop#{loop}/{loop_sn}, direct:{direct_cur}, There are {len(arg_list):02} args for bin:{bin_col}, blk:{blk_id:06},{sn:03}/{len(miss):03}')
+                score_list = estimate_arg(blk_id, arg_list)
+                score_list_binid.append(score_list)
+    return pd.concat(score_list_binid)
+
+def validate(bin_id, class_name, col_name, direct, shift):
+    local_args = locals()
+    arg_list = get_best_arg_by_blk(bin_id, col_name, class_name, 'down', top=3, shift=0, vali=True )
+
+    if len(arg_list) == 0:
+        logger.warning(f'No arg  need to validate is found for blk:{local_args}, class_name:{class_name}')
+        return 0
+
+    # Estimate by blk_list
+    from core.check import check_options, get_miss_blocks_ex
+    miss = get_miss_blocks_ex()
+    miss = miss.loc[(miss.col == col_name) & (miss.bin_id == bin_id)]
+    for sn, blk_id in enumerate(list(miss.index)):
+        # if len(miss)<=10 and bin_id >=5 :
+        #     direct_list = ['down', 'up']
+        # else:
+        #     direct_list =
+        blk = get_blocks()
+        cur_block = blk.iloc[blk_id]
+        for direct_cur in [direct]:
+            arg_list['bin_id'] = bin_id
+            arg_list['blk_id'] = blk_id
+            arg_list['wtid'] = cur_block.wtid
+            arg_list['direct'] = direct_cur
+            arg_list['shift'] = int(shift)
+
+            # logger.info(arg_list)
+            logger.info(
+                f'direct:{direct_cur}, There are {len(arg_list):02} args for bin:{local_args}, blk:{blk_id:06},{sn:03}/{len(miss):03}')
+            score_list = estimate_arg(blk_id, arg_list)
+
 
 
 @timed()
@@ -373,10 +417,11 @@ def main():
     blk_list = blk_list.drop_duplicates(['bin_id', 'col'])
 
     para_list = []
+    direct = 'up'
     for sn, row in blk_list.iterrows():
-        para_list.add((row.bin_id, row.col, shift))
+        para_list.append((row.bin_id, row.col, shift, direct))
 
-    para_list = sorted(para_list, key=lambda val: val[0], reverse=True)
+    para_list = sorted(para_list, key=lambda val: val[0], reverse=False)
 
     try:
         pool = ThreadPool(thred_num)
@@ -403,6 +448,8 @@ if __name__ == '__main__':
     nohup python ./core/predict.py --col_count 4 > predict_4.log 2>&1 &
     
     nohup python ./core/predict.py 1 > predict_1.log 2>&1 &
+    
+    nohup ./bin/main.sh --col_count 4 &
     """
 
 

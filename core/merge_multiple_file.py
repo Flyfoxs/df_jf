@@ -61,7 +61,9 @@ config={
     #'var020': [(new_file,1)], int
 
 }
-#
+
+#'var017','var009','var063','var044',  'var064','var048'
+
 # config={
 #
 #     'var017': [(new_file, 1)], #✔️
@@ -69,7 +71,7 @@ config={
 #     'var063': [(new_file, 1)],
 #     'var044': [(new_file, 1)],
 #     'var064': [(new_file, 1)],
-#     'var048': [(new_file, 1)],
+#     'var048': [(new_file, 1)], #✔️
 #     'var013': [(new_file, 1)],
 #     'var008': [(new_file, 1)],
 #     'var050': [(new_file, 1)],

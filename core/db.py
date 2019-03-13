@@ -149,6 +149,50 @@ def insert(score_ind):
     db.commit()
 
 
+
+
+def update(score_ind):
+    score_ind = score_ind.fillna(0)
+    db = get_connect()
+
+    cur_blk = get_blocks().iloc[score_ind.blk_id]
+
+    score_ind['length'] = cur_blk.length
+    import socket
+    host_name = socket.gethostname()
+    score_ind['server'] = host_name
+    score_ind['time_begin'] = cur_blk.time_begin
+    score_ind['time_end'] = cur_blk.time_end
+    score_ind = dict(score_ind )
+
+    sql = """update score_list 
+        set score_val = {score}	,
+            server  =  '{server}'
+        where 
+                blk_id =  {blk_id} and
+                bin_id = {bin_id} and
+                wtid = {wtid} and
+                class_name	= '{class_name}' and
+                col_name	= '{col_name}' and
+                file_num =	  {file_num} and
+                momenta_col_length	= {momenta_col_length} and
+                momenta_impact	={momenta_impact}	  and
+                drop_threshold	= round({drop_threshold},2) and
+                related_col_count=	{related_col_count}  and
+                col_per={col_per} and
+                time_sn	= {time_sn}	and
+                window = round({window},2)  and
+                n_estimators={n_estimators} and
+                max_depth={max_depth} and
+                length = {length} and
+                shift={shift}
+                """.format(**score_ind, version=version)
+    cur = db.cursor()
+    logger.debug(sql)
+    cur.execute(sql )
+    db.commit()
+
+
 def get_args_existing_by_blk(bin_id, col_name, class_name=None, direct=None, shift=0, version_loc=None):
     db = get_connect()
     class_name = 'null' if class_name is None else f"'{class_name}'"
@@ -167,6 +211,7 @@ def get_args_existing_by_blk(bin_id, col_name, class_name=None, direct=None, shi
                         max_depth,
                         bin_id,
                         sum(score_total)/sum(score_count) score_mean,
+                        sum(score_val * length)/sum(score_count) score_val_mean,
                         std(score) score_std,
                         count(*) count_rec,
                         count(distinct blk_id) count_blk
@@ -199,19 +244,25 @@ def get_args_existing_by_blk(bin_id, col_name, class_name=None, direct=None, shi
     return exist_df
 
 
-def get_best_arg_by_blk(bin_id,col_name, class_name=None,direct=None, top=0, shift=0, version=version):
+def get_best_arg_by_blk(bin_id,col_name, class_name=None,direct=None, top=1, shift=0, version=version, vali=False):
     args = get_args_existing_by_blk(bin_id, col_name, class_name,direct, shift, version)
     if args is not None and len(args)>1:
         count_blk_mean = args.count_blk.mean()
         # Filter exception record, such as kill
         args = args.loc[args.count_blk >= count_blk_mean]
-        args = args.reset_index().sort_values(['score_mean', 'file_num', 'window', 'momenta_impact', 'score_std'], ascending=[False,True, True, True,True])#.head(10)
+        if vali:
+            args = args[args.score_val_mean == 0]
+        args = args.reset_index().sort_values([ 'score_val_mean','score_mean', 'file_num', 'window', 'momenta_impact', 'score_std'],
+                                              ascending=[False, False,True, True, True,True])#.head(10)
         #args = args.sort_values('score_std')
         args['bin_id']=bin_id
         args['cnt_blk_max'] = args.count_blk.max()
-        return args.iloc[top]
+        if vali:
+            args = args.drop_duplicates(['score_mean', 'score_std'])
+        return args.iloc[:top]
     else:
         return None
+
 
 @timed()
 def get_args_missing_by_blk(original: pd.DataFrame, bin_id, col_name, shift):

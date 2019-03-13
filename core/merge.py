@@ -6,10 +6,12 @@ from core.merge_multiple_file import *
 from core.check import check_options
 
 
+model_file = 'v3.7.h5'
 
 
+#0.63992780000
 @timed()
-def merge_file(base_file = './output/0.70180553000.csv', top_n=5, fillzero=True):
+def merge_file(base_file = './output/312_0.7082478000000001.csv', top_n=5, fillzero=True):
     base_df = pd.read_csv(base_file)
     base_df.index = get_template_with_position().index_ex.values
 
@@ -58,7 +60,7 @@ def merge_file(base_file = './output/0.70180553000.csv', top_n=5, fillzero=True)
 
     base_df = convert_enum(base_df)
 
-    file = f"{base_file}_m0_{file_sn}_{top_n}_{'_'.join(select_col[:top_n])}_{int(time.time() % 10000000)}.csv"
+    file = f"{base_file}_m0_{file_sn}_{top_n}_{'_'.join(select_col[:top_n])}_{int(time.time() % 10000000)}_{model_file}.csv"
     base_df.iloc[:, :70].to_csv(file, index=None)
     logger.info(f'Merge file save to:{file}')
     return base_df.iloc[:, :70]
@@ -74,7 +76,7 @@ def gen_best(count_columns):
 
     from core.check import get_miss_blocks_ex
 
-    snap = pd.read_hdf('./imp/v3.3.h5')
+    snap = pd.read_hdf(f'./imp/{model_file}')
 
     arg_list = []
     for col_name in imp_list:

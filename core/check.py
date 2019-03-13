@@ -222,7 +222,8 @@ def estimate_score(version):
         logger.info(f'bin_id:{bin_id} is done')
         for col_name in get_predict_col():
             arg = get_best_arg_by_blk(bin_id,col_name, class_name='lr',direct='down', shift=0, version=version)
-            df = df.append(arg)
+            if arg is not None:
+                df = df.append(arg.iloc[0])
     return df
 
 def get_high_priority_col(top_n):
