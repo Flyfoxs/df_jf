@@ -1,7 +1,7 @@
 import mysql.connector
 import mysqlx
 from core.feature import *
-
+from file_cache.utils.util_log import timed
 
 
 
@@ -151,6 +151,7 @@ def insert(score_ind):
 
 
 
+@timed()
 def update(score_ind):
     score_ind = score_ind.fillna(0)
     db = get_connect()
@@ -245,7 +246,6 @@ def get_args_existing_by_blk(bin_id, col_name, class_name=None, direct=None, shi
     exist_df = exist_df.sort_values('score_mean', ascending=False)
     return exist_df
 
-
 def get_best_arg_by_blk(bin_id,col_name, class_name=None,direct=None, top=1, shift=0, version=version, vali=False):
     args = get_args_existing_by_blk(bin_id, col_name, class_name,direct, shift, version)
     if args is not None and len(args)>1:
@@ -260,16 +260,17 @@ def get_best_arg_by_blk(bin_id,col_name, class_name=None,direct=None, top=1, shi
         args['cnt_blk_max'] = args.count_blk.max()
         if vali:
             val_count = len(args.loc[args.zero_count == 0])
+            #print(args.columns)
             if val_count < 20:
-                args = args.loc[args.zero_count > 0]
+                #Some block can not find train set
+                args = args.loc[args.zero_count > 2]
                 args = args.drop_duplicates(['score_mean', 'score_std'])
-                return args.iloc[:top]
             else:
                 logger.info(f'get_best_arg_by_blk, already have {val_count} record for {bin_id}, {col_name}')
                 return None
+        return args.iloc[:top]
     else:
         return None
-
 
 @timed()
 def get_args_missing_by_blk(original: pd.DataFrame, bin_id, col_name, shift):

@@ -428,6 +428,7 @@ def main():
 
     para_list = sorted(para_list, key=lambda val: val[0], reverse=False)
 
+    #para_list= [(3, 'var048', 0)]
     try:
         pool = ThreadPool(thred_num)
         logger.info(f'There are {len(para_list)} para need to process for:col({len(imp_list)}): {imp_list}, {thred_num} threds')
@@ -441,10 +442,11 @@ def main():
 
 
 if __name__ == '__main__':
+    #validate(3, 'lr', 'var048', 'up', 0)
     """
     blkid, direct, paras, score, score_total, score_count
     """
-    main()
+    #main()
     #gen_blk_result(106245)
     # get_train_val_range_left(106245, 2.9)
 
@@ -455,6 +457,8 @@ if __name__ == '__main__':
     nohup python ./core/predict.py 1 > predict_1.log 2>&1 &
     
     nohup ./bin/main.sh --col_count 4 &
+    
+    nohup python ./core/predict.py --col_count 6  > predict.log 2>&1 &
     """
 
 
