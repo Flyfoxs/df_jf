@@ -284,7 +284,7 @@ def gen_best_sub(best_arg):
 
 @timed()
 def process_blk_id(bin_col):
-    bin_id, col_name, shift, direct  = bin_col
+    bin_id, col_name, shift = bin_col
 
     from core.check import check_options, get_miss_blocks_ex
 
@@ -300,10 +300,10 @@ def process_blk_id(bin_col):
                     return 'In processing'
 
                 try:
-                    if direct=='down':
-                        return train(bin_id, class_name, col_name, direct, shift)
-                    else:
-                        return validate(bin_id, class_name, col_name, direct, shift)
+
+                        train(bin_id, class_name, col_name, 'down', shift)
+
+                        validate(bin_id, class_name, col_name, 'up', shift)
                 except Exception as e:
                     logger.exception(e)
                     logger.error(f'Error when process blkid:{bin_col}')
@@ -315,6 +315,7 @@ def process_blk_id(bin_col):
         return 'No Lock'
 
 
+@timed()
 def train(bin_id, class_name, col_name, direct, shift):
     local_args = locals()
     score_list_binid = []
@@ -358,19 +359,21 @@ def train(bin_id, class_name, col_name, direct, shift):
 
                 # logger.info(arg_list)
                 logger.info(
-                    f'loop#{loop}/{loop_sn}, direct:{direct_cur}, There are {len(arg_list):02} args for bin:{bin_col}, blk:{blk_id:06},{sn:03}/{len(miss):03}')
+                    f'loop#{loop}/{loop_sn}, direct:{direct_cur}, There are {len(arg_list):02} args for bin:{bin_id}, blk:{blk_id:06},{sn:03}/{len(miss):03}')
                 score_list = estimate_arg(blk_id, arg_list)
                 score_list_binid.append(score_list)
     return pd.concat(score_list_binid)
 
+@timed()
 def validate(bin_id, class_name, col_name, direct, shift):
     local_args = locals()
     arg_list = get_best_arg_by_blk(bin_id, col_name, class_name, 'down', top=3, shift=0, vali=True )
 
-    if len(arg_list) == 0:
+    if arg_list is None or len(arg_list) == 0:
         logger.warning(f'No arg  need to validate is found for blk:{local_args}, class_name:{class_name}')
         return 0
 
+    score_list_vali = []
     # Estimate by blk_list
     from core.check import check_options, get_miss_blocks_ex
     miss = get_miss_blocks_ex()
@@ -393,6 +396,8 @@ def validate(bin_id, class_name, col_name, direct, shift):
             logger.info(
                 f'direct:{direct_cur}, There are {len(arg_list):02} args for bin:{local_args}, blk:{blk_id:06},{sn:03}/{len(miss):03}')
             score_list = estimate_arg(blk_id, arg_list)
+            score_list_vali.append(score_list)
+    return pd.concat(score_list_vali)
 
 
 
@@ -417,9 +422,9 @@ def main():
     blk_list = blk_list.drop_duplicates(['bin_id', 'col'])
 
     para_list = []
-    direct = 'up'
+
     for sn, row in blk_list.iterrows():
-        para_list.append((row.bin_id, row.col, shift, direct))
+        para_list.append((row.bin_id, row.col, shift))
 
     para_list = sorted(para_list, key=lambda val: val[0], reverse=False)
 

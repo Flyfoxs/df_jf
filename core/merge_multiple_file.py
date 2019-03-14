@@ -8,18 +8,24 @@ new_file = '0.70180553000.csv_04_var037_var062_var012.csv'
 
 new_file = 'merge_m0_3152_4_var067_var037_var062_var012.csv'
 new_file = '0.67950475000.csv'
+new_file = '312_0.7082478000000001.csv_m0_24430_400_31_var036_var019_var065_2491490_v3.7.h5.csv'
 config={
     # 'var067':[('merge_4_var062_var012.csv',1)],
     # 'var037':[('merge_4_var062_var012.csv',1)],
     # 'var062':[('merge_4_var062_var012.csv',1)],
-    #
+
+    'var017': [(new_file, 1)],  # ✔️
+    'var009': [(new_file, 1)],
+    'var063': [(new_file, 1)],
+    'var044': [(new_file, 1)],
+    'var064': [(new_file, 1)],
+    'var048': [(new_file, 1)],  # ✔️
 
 
-    'var067': [(new_file,1)],
+    'var067': [(new_file,1)], #31 begin
     'var037': [(new_file,1)],
     'var062': [(new_file,1)],
     'var012': [(new_file,1)],
-
     'var007': [(new_file,1)],
     'var014': [(new_file, 1)],
     'var001': [(new_file, 1)],
@@ -28,7 +34,6 @@ config={
     'var038': [(new_file, 1)],
     'var005': [(new_file, 1)],
     'var028': [(new_file, 1)],
-
     'var006': [(new_file, 1)],
     'var011': [(new_file, 1)],
     'var057': [(new_file, 1)],
@@ -44,21 +49,18 @@ config={
     'var002': [(new_file, 1)],
     'var030': [(new_file, 1)],
     'var021': [(new_file, 1)],
-    #'var056': [(new_file, 1)],
     'var060': [(new_file, 1)],
-    'var036': [(new_file, 1)], #30
-    #'var053' : [('0.67950475000.csv', 1)], Drop
+    'var036': [(new_file, 1)],
+    'var019': [(new_file, 1)],
+    'var065': [(new_file, 1)], #31
 
 
-    #'var016': [('0.67950475000.csv', 1)],#Drop 31, int
-    #'var066': [('0.67950475000.csv', 1)],#Drop 32, int
-    'var019': [(new_file, 1)], #33
-    #'var059': [('0.67950475000.csv', 1)],#Drop 34
-    'var065': [(new_file, 1)], #35
-    #'var053': [('0.67950475000.csv', 1)], Drop, int
-    #'var018': [('0.67950475000.csv', 1)], Drop
-    #'var047': [('0.67950475000.csv', 1)], #36 , int
-    #'var020': [(new_file,1)], int
+
+    # 'var056': [(new_file, 1)],
+    # 'var059': [('0.67950475000.csv', 1)],#Drop 34
+    # 'var053' : [('0.67950475000.csv', 1)], Drop
+    # 'var016': [('0.67950475000.csv', 1)],#Drop 31, int
+    # 'var066': [('0.67950475000.csv', 1)],#Drop 32, int
 
 }
 
@@ -66,12 +68,7 @@ config={
 
 # config={
 #
-#     'var017': [(new_file, 1)], #✔️
-#     'var009': [(new_file, 1)],
-#     'var063': [(new_file, 1)],
-#     'var044': [(new_file, 1)],
-#     'var064': [(new_file, 1)],
-#     'var048': [(new_file, 1)], #✔️
+
 #     'var013': [(new_file, 1)],
 #     'var008': [(new_file, 1)],
 #     'var050': [(new_file, 1)],
@@ -82,6 +79,16 @@ config={
 #     'var039': [(new_file, 1)],
 #     'var058': [(new_file, 1)],
 # }
+#
+# config = {
+#     'var016': [(new_file, 1)],#Drop 31, int
+#     'var066': [(new_file, 1)],#Drop 32, int
+#
+#     'var053': [(new_file, 1)], #Drop, int
+#
+#     'var047': [(new_file, 1)], #36 , int
+#     'var020': [(new_file,1)], #int
+# }
 
 select_col = list(config.keys())
 
@@ -91,7 +98,7 @@ def read_file(base_file):
     base = pd.read_csv(base_file)
     return base
 
-def merge_diff_col(base_file='./output/312_0.7082478000000001.csv', fillzero=False ):
+def merge_diff_col(base_file='./output/best_313.csv', fillzero=False ):
 
     base = read_file(base_file)
     if fillzero:
@@ -123,8 +130,8 @@ def merge_col(col):
         for sn, individual_file in enumerate(config_col):
             weight[sn]=individual_file[1]
             individual_file = f'./output/{individual_file[0]}'
-            #print('individual_file=', individual_file)
-            original_df[str(sn)]=pd.read_csv(individual_file, usecols= [col]).iloc[:,0]
+            df = read_file(individual_file)
+            original_df[str(sn)]=df[[col]].iloc[:,0]
 
         total = np.sum(weight)
         original_df['avg'] = original_df.apply(lambda row: np.dot(weight,row.values)/total ,axis=1)
@@ -149,16 +156,13 @@ def merge_col(col):
 
 
 if __name__ == '__main__':
-    # merge_diff_col(fillzero=True)
+    merge_diff_col(fillzero=True)
 
 
-    base_file='./output/312_0.7082478000000001.csv'
+    base = read_file('./output/best_313.csv')
 
-    base = read_file(base_file)
+    new = read_file(f'./output/{new_file}')
 
-    other_col = ['var053', 'var066', 'var016', 'var047']
-    print(f'Set some col({len(other_col)}) to Null:{other_col}')
-    base.loc[:, other_col] = -1
-
-    base.to_csv('./output/var020.csv', index=None)
-
+    base.loc[:,select_col] = new.loc[:,select_col]
+    base.to_csv(f'./output/best_14_{len(select_col)}.csv', index=None)
+    #

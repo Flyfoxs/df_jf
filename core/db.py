@@ -65,7 +65,7 @@ def check_last_time_by_binid(bin_id,col_name, threshold):
 @timed()
 def check_last_time_by_wtid(key):
     db = get_connect()
-    sql = f""" select IFNULL(max(ct),date'2011-01-01')  from score_list where 
+    sql = f""" select IFNULL(max(mt),date'2011-01-01')  from score_list where 
     version={version} and  wtid = {int(key)}"""
     # logger.info(sql)
     cur = db.cursor()
@@ -167,7 +167,8 @@ def update(score_ind):
 
     sql = """update score_list 
         set score_val = {score}	,
-            server  =  '{server}'
+            server  =  '{server}',
+            mt = now()
         where 
                 blk_id =  {blk_id} and
                 bin_id = {bin_id} and
@@ -212,6 +213,7 @@ def get_args_existing_by_blk(bin_id, col_name, class_name=None, direct=None, shi
                         bin_id,
                         sum(score_total)/sum(score_count) score_mean,
                         sum(score_val * length)/sum(score_count) score_val_mean,
+                        sum(case when score_val is Null then 1 else 0 end) zero_count,
                         std(score) score_std,
                         count(*) count_rec,
                         count(distinct blk_id) count_blk
@@ -250,16 +252,21 @@ def get_best_arg_by_blk(bin_id,col_name, class_name=None,direct=None, top=1, shi
         count_blk_mean = args.count_blk.mean()
         # Filter exception record, such as kill
         args = args.loc[args.count_blk >= count_blk_mean]
-        if vali:
-            args = args[args.score_val_mean == 0]
+
         args = args.reset_index().sort_values([ 'score_val_mean','score_mean', 'file_num', 'window', 'momenta_impact', 'score_std'],
                                               ascending=[False, False,True, True, True,True])#.head(10)
         #args = args.sort_values('score_std')
         args['bin_id']=bin_id
         args['cnt_blk_max'] = args.count_blk.max()
         if vali:
-            args = args.drop_duplicates(['score_mean', 'score_std'])
-        return args.iloc[:top]
+            val_count = len(args.loc[args.zero_count == 0])
+            if val_count < 20:
+                args = args.loc[args.zero_count > 0]
+                args = args.drop_duplicates(['score_mean', 'score_std'])
+                return args.iloc[:top]
+            else:
+                logger.info(f'get_best_arg_by_blk, already have {val_count} record for {bin_id}, {col_name}')
+                return None
     else:
         return None
 
@@ -290,7 +297,8 @@ def get_args_missing_by_blk(original: pd.DataFrame, bin_id, col_name, shift):
     original = original.copy().drop(axis='column' ,
                                     columns=['score_mean', 'score_std',
                                              'bin_id', 'count_blk', 'count_rec',
-                                             'length_max', 'score_count'],errors='ignore' )
+                                             'length_max', 'score_count',
+                                             'score_val_mean', 'zero_count',],errors='ignore' )
 
     #Can not remove time_sn, if only 1 file
     original.loc[(original.file_num == 1) & (original.time_sn == 0), 'time_sn'] = 1

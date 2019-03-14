@@ -60,7 +60,7 @@ def merge_file(base_file = './output/312_0.7082478000000001.csv', top_n=5, fillz
 
     base_df = convert_enum(base_df)
 
-    file = f"{base_file}_m0_{file_sn}_{top_n}_{'_'.join(select_col[:top_n])}_{int(time.time() % 10000000)}_{model_file}.csv"
+    file = f"{base_file}_m0_{file_sn}_{top_n}_{len(select_col)}_{'_'.join(select_col[-3:])}_{int(time.time() % 10000000)}_{model_file}.csv"
     base_df.iloc[:, :70].to_csv(file, index=None)
     logger.info(f'Merge file save to:{file}')
     return base_df.iloc[:, :70]
@@ -128,7 +128,7 @@ if __name__ == '__main__':
     import sys
 
     count_columns = check_options().col_count
-    gen_best(count_columns)
+    # gen_best(count_columns)
     merge_file(top_n=count_columns)
     #merge_diff_col()
 
