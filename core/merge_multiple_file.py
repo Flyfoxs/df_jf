@@ -22,10 +22,12 @@ config={
     'var048': [(new_file, 1)],  # ✔️
 
 
-    'var067': [(new_file,1)], #31 begin
+
+    'var067': [(new_file,1)],
     'var037': [(new_file,1)],
     'var062': [(new_file,1)],
     'var012': [(new_file,1)],
+
     'var007': [(new_file,1)],
     'var014': [(new_file, 1)],
     'var001': [(new_file, 1)],
@@ -34,6 +36,7 @@ config={
     'var038': [(new_file, 1)],
     'var005': [(new_file, 1)],
     'var028': [(new_file, 1)],
+
     'var006': [(new_file, 1)],
     'var011': [(new_file, 1)],
     'var057': [(new_file, 1)],
@@ -49,6 +52,7 @@ config={
     'var002': [(new_file, 1)],
     'var030': [(new_file, 1)],
     'var021': [(new_file, 1)],
+
     'var060': [(new_file, 1)],
     'var036': [(new_file, 1)],
     'var019': [(new_file, 1)],
@@ -118,6 +122,27 @@ def merge_diff_col(base_file='./output/best_313.csv', fillzero=False ):
             base.to_csv(file_name, index=None)
 
 
+def merge_2_file(col_list,
+                 base_file='./output/best_313.csv',
+                 new_file ='./output/312_0.7082478000000001.csv_m0_29152_100_37_var036_var019_var065_2573414_v3.8.h5.csv',
+                 fillzero=True):
+    base = pd.read_csv(base_file)
+    if fillzero:
+        other_col = ['var053', 'var066', 'var016', 'var020', 'var047']
+        print(f'Set some col({len(other_col)}) to Null:{other_col}')
+        base.loc[:, other_col] = -1
+
+    new = pd.read_csv(new_file)
+
+    base.loc[:,col_list] = new.loc[:,col_list]
+
+    import ntpath
+    file_name = ntpath.basename(base_file)
+
+    logger.info(f'Merge col_list {len(select_col)}:{select_col}')
+    file_name = f"./output/{file_name}_zero_{fillzero}_14_v2_{len(col_list):02}_{'_'.join(col_list[-2:])}.csv"
+    base.to_csv(file_name, index=None)
+    logger.info(f'File save to {file_name}')
 
 def merge_col(col):
 
@@ -156,13 +181,13 @@ def merge_col(col):
 
 
 if __name__ == '__main__':
-    merge_diff_col(fillzero=True)
+    #merge_diff_col(fillzero=True)
 
+    merge_2_file(select_col[:6], fillzero=False)
+    merge_2_file(select_col[-31:], fillzero=False)
+    merge_2_file(select_col, fillzero=False)
 
-    base = read_file('./output/best_313.csv')
-
-    new = read_file(f'./output/{new_file}')
-
-    base.loc[:,select_col] = new.loc[:,select_col]
-    base.to_csv(f'./output/best_14_{len(select_col)}.csv', index=None)
-    #
+# merge_2_file(select_col[-31:],
+#              './output/312_0.7082478000000001.csv',
+#              './output/312_0.7082478000000001.csv_m0_24430_400_31_var036_var019_var065_2491490_v3.7.h5.csv')
+# #

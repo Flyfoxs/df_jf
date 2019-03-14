@@ -229,57 +229,63 @@ def estimate_arg(miss_block_id, arg_df):
 @timed()
 def gen_best_sub(best_arg):
 
-    miss_block_id=best_arg.blk_id
-    cur_block = get_blocks().loc[best_arg.blk_id]
+    lock_mins = 5
+    try:
+        with factory.create_lock(str(best_arg.blk_id), ttl=1000*60 *lock_mins):
+            miss_block_id=best_arg.blk_id
+            cur_block = get_blocks().loc[best_arg.blk_id]
 
-    score_avg = best_arg["score_mean"]
-    score_std = best_arg["score_std"]
-    bin_id = int(best_arg["bin_id"])
+            score_avg = best_arg["score_mean"]
+            score_std = best_arg["score_std"]
+            bin_id = int(best_arg["bin_id"])
 
-    logger.info(f'The select score for blkid:{miss_block_id}, '
-                f'avg:{score_avg}, '
-                f'std:{score_std},')
+            logger.info(f'The select score for blkid:{miss_block_id}, '
+                        f'avg:{score_avg}, '
+                        f'std:{score_std},')
 
-    col_name = cur_block['col']
+            col_name = cur_block['col']
 
-    folder = f'./output/blocks/{col_name}'
-    if not os.path.exists(folder):
-        try:
-            os.makedirs(folder)
-        except Exception as e:
-            logger.info(f'Folder existing:{folder}')
+            folder = f'./output/blocks/{col_name}'
+            if not os.path.exists(folder):
+                try:
+                    os.makedirs(folder)
+                except Exception as e:
+                    logger.info(f'Folder existing:{folder}')
 
-    file_prefix = f'{folder}/{col_name}_{miss_block_id:06}'
+            file_prefix = f'{folder}/{col_name}_{miss_block_id:06}'
 
-    exist_len = len(glob(f'{file_prefix}*'))
-    if  exist_len > 0:
-        logger.warning(f'Already find {exist_len} file for file:{file_prefix}')
-        return  score_avg
-
-
-    wtid = cur_block['wtid']
-    begin, end = cur_block.begin, cur_block.end
-
-    adjust_file_num = int(max(10, best_arg.file_num))
-    train = get_train_feature_multi_file(wtid, col_name, adjust_file_num, int(best_arg.related_col_count))
-
-    sub = train.loc[begin:end]
-    train, sub = get_train_df_by_val(miss_block_id, train, sub,
-                                     best_arg.window,
-                                     best_arg.drop_threshold,
-                                     best_arg.time_sn, best_arg.file_num, best_arg.col_per, model=0)
+            exist_len = len(glob(f'{file_prefix}*'))
+            if  exist_len > 0:
+                logger.warning(f'Already find {exist_len} file for file:{file_prefix}')
+                return  score_avg
 
 
-    predict_fn = get_predict_fun(train, best_arg)
-    predict_res = predict_fn(sub.iloc[:, 1:])
-    predict_res = np.round(predict_res, 2)
-    predict_res = pd.Series(predict_res, index=sub.index)
-    logger.debug(f'sub={sub.shape}, predict_res={predict_res.shape}, type={type(predict_res)}')
+            wtid = cur_block['wtid']
+            begin, end = cur_block.begin, cur_block.end
 
-    file_csv = f'{file_prefix}_{score_avg:.4f}_{score_std:.4f}_{bin_id:02}.csv'
-    logger.info(f'Result will save to:{file_csv}')
-    predict_res.to_csv(file_csv)
-    return score_avg
+            adjust_file_num = int(max(10, best_arg.file_num))
+            train = get_train_feature_multi_file(wtid, col_name, adjust_file_num, int(best_arg.related_col_count))
+
+            sub = train.loc[begin:end]
+            train, sub = get_train_df_by_val(miss_block_id, train, sub,
+                                             best_arg.window,
+                                             best_arg.drop_threshold,
+                                             best_arg.time_sn, best_arg.file_num, best_arg.col_per, model=0)
+
+
+            predict_fn = get_predict_fun(train, best_arg)
+            predict_res = predict_fn(sub.iloc[:, 1:])
+            predict_res = np.round(predict_res, 2)
+            predict_res = pd.Series(predict_res, index=sub.index)
+            logger.debug(f'sub={sub.shape}, predict_res={predict_res.shape}, type={type(predict_res)}')
+
+            file_csv = f'{file_prefix}_{score_avg:.4f}_{score_std:.4f}_{bin_id:02}.csv'
+            logger.info(f'Result will save to:{file_csv}')
+            predict_res.to_csv(file_csv)
+            return score_avg
+    except RedLockError as e:
+        logger.info(f'Not get the lock for :{str(best_arg.blk_id)}')
+        return 'No Lock'
 
 
 @timed()
@@ -446,7 +452,7 @@ if __name__ == '__main__':
     """
     blkid, direct, paras, score, score_total, score_count
     """
-    #main()
+    main()
     #gen_blk_result(106245)
     # get_train_val_range_left(106245, 2.9)
 

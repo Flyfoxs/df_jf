@@ -6,12 +6,12 @@ from core.merge_multiple_file import *
 from core.check import check_options
 
 
-model_file = 'v3.7.h5'
+model_file = 'v3.8.h5'
 
 
 #0.63992780000
 @timed()
-def merge_file(base_file = './output/312_0.7082478000000001.csv', top_n=5, fillzero=True):
+def merge_file(base_file = './output/best_313.csv', top_n=5, fillzero=True):
     base_df = pd.read_csv(base_file)
     base_df.index = get_template_with_position().index_ex.values
 
@@ -122,13 +122,17 @@ if __name__ == '__main__':
     """
     #0.63397956000
     rm -rf output/blocks/var0*
-    nohup python ./core/merge.py --col_count 4 > merge_$(hostname).log 2>&1 &
+    nohup python ./core/merge.py --genfile > merge_$(hostname).log 2>&1 &
+    nohup python ./core/merge.py --col_count 6 > merge_$(hostname).log 2>&1 &
     """
 
     import sys
 
     count_columns = check_options().col_count
-    # gen_best(count_columns)
+    if check_options().genfile:
+        gen_best(count_columns)
+    else:
+        logger.info('======Reuse existing file')
     merge_file(top_n=count_columns)
     #merge_diff_col()
 

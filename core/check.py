@@ -729,6 +729,7 @@ def check_options():
     parser.add_argument("--class_name", type=str, default='lr', help="The folder name to save score")
 
     parser.add_argument('--dynamic',  action='store_true', default=True, help='Enable the dynamic args')
+    parser.add_argument('--genfile', action='store_true', default=False, help='Gen File')
 
     parser.add_argument("-D", '--debug', action='store_true', default=False)
     parser.add_argument("-W", '--warning', action='store_true', default=False)
