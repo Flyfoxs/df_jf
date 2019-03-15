@@ -2,13 +2,16 @@ import pandas as pd
 import numpy as np
 from core.feature import *
 
+base_file = 'good_luck.csv'
+
 new_file = 'merge_m2_3152_4_var067_var037_var062_var012_var007_var014_var001_var022_var029_var038_var005_var028_var006_var011_var057_var055_var051_var024_var035_var045_var052_var003_var040_var033_var002_var030_var021_var056_var060_var036_var019_var065.csv'
 
 new_file = '0.70180553000.csv_04_var037_var062_var012.csv'
 
 new_file = 'merge_m0_3152_4_var067_var037_var062_var012.csv'
 new_file = '0.67950475000.csv'
-new_file = '312_0.7082478000000001.csv_m0_24430_400_31_var036_var019_var065_2491490_v3.7.h5.csv'
+new_file = 'good_luck.csv_remote_29152_100_37_var036_var019_var065_2648632_v3.9_train_val.h5.csv'
+new_file = 'good_luck.csv_remote_29152_100_37_var036_var019_var065_2657690_v3.9_val.h5.csv'
 config={
     # 'var067':[('merge_4_var062_var012.csv',1)],
     # 'var037':[('merge_4_var062_var012.csv',1)],
@@ -102,7 +105,7 @@ def read_file(base_file):
     base = pd.read_csv(base_file)
     return base
 
-def merge_diff_col(base_file='./output/best_313.csv', fillzero=False ):
+def merge_diff_col(base_file=f'./output/{base_file}', fillzero=False ):
 
     base = read_file(base_file)
     if fillzero:
@@ -123,24 +126,28 @@ def merge_diff_col(base_file='./output/best_313.csv', fillzero=False ):
 
 
 def merge_2_file(col_list,
-                 base_file='./output/best_313.csv',
-                 new_file ='./output/312_0.7082478000000001.csv_m0_29152_100_37_var036_var019_var065_2573414_v3.8.h5.csv',
+                 base_file=f'./output/{base_file}',
+                 replace_file =f'./output/{new_file}',
+                                        #312_0.7082478000000001.csv_m0_29152_100_37_var036_var019_var065_2573414_v3.8.h5.csv',
                  fillzero=True):
     base = pd.read_csv(base_file)
     if fillzero:
         other_col = ['var053', 'var066', 'var016', 'var020', 'var047']
         print(f'Set some col({len(other_col)}) to Null:{other_col}')
         base.loc[:, other_col] = -1
-
-    new = pd.read_csv(new_file)
-
-    base.loc[:,col_list] = new.loc[:,col_list]
+    logger.info(f'new file:{replace_file}')
+    new = pd.read_csv(replace_file)
+    print(new.loc[201262, 'var048'])
+    print(base.loc[201262, 'var048'])
+    base.loc[:,col_list] = new.loc[:,col_list]#.values
+    print(base.loc[201262, 'var048'])
 
     import ntpath
     file_name = ntpath.basename(base_file)
 
-    logger.info(f'Merge col_list {len(select_col)}:{select_col}')
-    file_name = f"./output/{file_name}_zero_{fillzero}_14_v2_{len(col_list):02}_{'_'.join(col_list[-2:])}.csv"
+    logger.info(f'Merge col_list {len(col_list)}:{col_list}')
+    file_name = f"./output/{file_name}_zero_{fillzero}_15_val_{len(col_list):02}_{'_'.join(col_list[-2:])}.csv"
+    base = convert_enum(base)
     base.to_csv(file_name, index=None)
     logger.info(f'File save to {file_name}')
 
@@ -183,11 +190,9 @@ def merge_col(col):
 if __name__ == '__main__':
     #merge_diff_col(fillzero=True)
 
-    merge_2_file(select_col[:6], fillzero=False)
-    merge_2_file(select_col[-31:], fillzero=False)
-    merge_2_file(select_col, fillzero=False)
+    merge_2_file(select_col[:6],   fillzero=True)
+    merge_2_file(select_col[-31:], fillzero=True)
+    # merge_2_file(select_col,       fillzero=True)
 
-# merge_2_file(select_col[-31:],
-#              './output/312_0.7082478000000001.csv',
-#              './output/312_0.7082478000000001.csv_m0_24430_400_31_var036_var019_var065_2491490_v3.7.h5.csv')
-# #
+
+

@@ -6,12 +6,12 @@ from core.merge_multiple_file import *
 from core.check import check_options
 
 
-model_file = 'v3.8.h5'
+model_file = 'v3.9_val.h5'
 
 
 #0.63992780000
 @timed()
-def merge_file(base_file = './output/best_313.csv', top_n=5, fillzero=True):
+def merge_file(base_file = './output/good_luck.csv', top_n=5, fillzero=True):
     base_df = pd.read_csv(base_file)
     base_df.index = get_template_with_position().index_ex.values
 
@@ -27,6 +27,7 @@ def merge_file(base_file = './output/best_313.csv', top_n=5, fillzero=True):
 
     from core.merge_multiple_file import select_col
     select_col = select_col[:top_n]
+    logger.debug(f'Columns need to process:{select_col}')
 
     # other_col = [col for col in base_df.columns if col not in select_col and 'var' in col]
     # logger.info(f'Set some col({len(other_col)}) to Null:{other_col}')
@@ -54,13 +55,18 @@ def merge_file(base_file = './output/best_313.csv', top_n=5, fillzero=True):
         base_df.loc[(base_df.wtid==wtid) &
                     (base_df.index.isin(value.iloc[:,0])), col_name]  \
             = score_all.mean(axis=1)
-        file_sn += 1
-        logger.info(f'Blk:{blk_id} is done, {file_sn:05}, {file_list}, {score_all.shape}')
-        #print(score_all[:3])
+
+        if len(file_list) >= 1:
+            file_sn += 1
+            logger.info(f'Blk:{blk_id} is done,len:{len(file_list)}, {file_sn:05}, {file_list}, {score_all.shape}')
+        else:
+            logger.warning(f'Blk:{blk_id} is done,can not find the file')
+
+
 
     base_df = convert_enum(base_df)
 
-    file = f"{base_file}_m0_{file_sn}_{top_n}_{len(select_col)}_{'_'.join(select_col[-3:])}_{int(time.time() % 10000000)}_{model_file}.csv"
+    file = f"{base_file}_remote_{file_sn}_{top_n}_{len(select_col)}_{'_'.join(select_col[-3:])}_{int(time.time() % 10000000)}_{model_file}.csv"
     base_df.iloc[:, :70].to_csv(file, index=None)
     logger.info(f'Merge file save to:{file}')
     return base_df.iloc[:, :70]
@@ -122,6 +128,7 @@ if __name__ == '__main__':
     """
     #0.63397956000
     rm -rf output/blocks/var0*
+    nohup python ./core/merge.py > merge_$(hostname).log 2>&1 &
     nohup python ./core/merge.py --genfile > merge_$(hostname).log 2>&1 &
     nohup python ./core/merge.py --col_count 6 > merge_$(hostname).log 2>&1 &
     """

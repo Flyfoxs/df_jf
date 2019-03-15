@@ -16,4 +16,4 @@ if __name__ == '__main__':
     # validate(3, 'lr', 'var048', 'up', 0)
 
 
-    pass
+    pd.read_csv('./output/')

@@ -253,15 +253,17 @@ def get_best_arg_by_blk(bin_id,col_name, class_name=None,direct=None, top=1, shi
         # Filter exception record, such as kill
         args = args.loc[args.count_blk >= count_blk_mean]
 
-        args = args.reset_index().sort_values([ 'score_val_mean','score_mean', 'file_num', 'window', 'momenta_impact', 'score_std'],
-                                              ascending=[False, False,True, True, True,True])#.head(10)
+        args['total'] = 0 #args['score_val_mean'] + args['score_mean']
+
+        args = args.reset_index().sort_values([ 'total', 'score_val_mean','score_mean', 'file_num', 'window', 'momenta_impact', 'score_std'],
+                                              ascending=[False, False, False,True, True, True,True])#.head(10)
         #args = args.sort_values('score_std')
         args['bin_id']=bin_id
         args['cnt_blk_max'] = args.count_blk.max()
         if vali:
             val_count = len(args.loc[args.zero_count == 0])
             #print(args.columns)
-            if val_count < 20:
+            if val_count < 500:
                 #Some block can not find train set
                 args = args.loc[args.zero_count > 2]
                 args = args.drop_duplicates(['score_mean', 'score_std'])

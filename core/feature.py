@@ -460,6 +460,9 @@ def convert_enum(df):
         if col in date_type and 'int' in date_type[col].__name__:
             if all(pd.notna(df[col])):
                 df[col] = df[col].astype(int)
+        elif col in date_type and 'float' in date_type[col].__name__:
+            if all(pd.notna(df[col])):
+                df[col] = round(df[col],2)
     return df
 
 #

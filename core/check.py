@@ -219,11 +219,11 @@ def estimate_score(version):
     bin_list = sorted(list(bin_list))
     for bin_id in bin_list:
         from core.merge_multiple_file import select_col
-        logger.info(f'bin_id:{bin_id} is done')
         for col_name in get_predict_col():
             arg = get_best_arg_by_blk(bin_id,col_name, class_name='lr',direct='down', shift=0, version=version)
             if arg is not None:
                 df = df.append(arg.iloc[0])
+        logger.info(f'bin_id:{bin_id} is done')
     return df
 
 def get_high_priority_col(top_n):

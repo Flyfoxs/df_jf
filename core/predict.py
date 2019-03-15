@@ -462,7 +462,7 @@ if __name__ == '__main__':
     
     nohup python ./core/predict.py 1 > predict_1.log 2>&1 &
     
-    nohup ./bin/main.sh --col_count 4 &
+    nohup ./bin/main.sh --col_count 6 &
     
     nohup python ./core/predict.py --col_count 6  > predict.log 2>&1 &
     """
