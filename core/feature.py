@@ -98,6 +98,7 @@ def get_train_ex(wtid):
 
 
 
+
 @file_cache()
 def get_missing_block_all():
     """
@@ -960,6 +961,8 @@ if __name__ == '__main__':
     """
     need to cache
     """
+    get_blocks()
+    get_missing_block_all()
     get_sub_template()
     get_template_with_position()
 

@@ -27,7 +27,7 @@ def named_lock(db_session, name, timeout):
         raise RuntimeError(e)
 
 def get_connect():
-    db = mysql.connector.connect(user='ai_lab', password='Had00p!!',
+    db = mysql.connector.connect(user='ai_lab', password=mysql_pass,
                                  host='vm-ai-2',
                                  database='ai')
     return db
@@ -253,7 +253,7 @@ def get_best_arg_by_blk(bin_id,col_name, class_name=None,direct=None, top=1, shi
         # Filter exception record, such as kill
         args = args.loc[args.count_blk >= count_blk_mean]
 
-        args['total'] = 0 #args['score_val_mean'] + args['score_mean']
+        args['total'] = args['score_val_mean'] + args['score_mean']
 
         args = args.reset_index().sort_values([ 'total', 'score_val_mean','score_mean', 'file_num', 'window', 'momenta_impact', 'score_std'],
                                               ascending=[False, False, False,True, True, True,True])#.head(10)

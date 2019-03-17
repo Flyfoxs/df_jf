@@ -50,6 +50,45 @@ Training data estimate(size, wtid, date, environment)
 # reuse predict file
 # lgb
 # col in same file
+# Enhance it, if the block count is small
+# Remove the useless col
+
+动态特征构造
+    Train数据的生成, Validate数据的生成
+    1)分布一致
+            单个缺失模块
+            整体模块的一致性
+            上下左右,滑动窗口
+    2)数据块大小
+    3)时间一致
+
+多模型的支持:
+    
+    
+
+Train的方法/加速:
+    Grid Search
+    SMO
+    退火算法
+    分布式
+    断点续传
+
+迁移学习:
+    因为超参只有一个, 就是分组方法.
+    所以类似的分组方法之间的参数是可以借鉴的.
+    
+何时停止训练,最优参数的选择:
+    如果片面在训练集上面,追求最优结果
+    
+
+
+过拟合:
+    参数共享
+    滑动窗口
+    交叉检验
+    
+
+
 
 
 

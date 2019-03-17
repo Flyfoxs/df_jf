@@ -1,3 +1,3 @@
 cache_size = 8
 local = True
-thred_num = 5
+thred_num = 1

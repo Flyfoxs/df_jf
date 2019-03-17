@@ -209,8 +209,9 @@ def summary_all_best_score(wtid_list=[-1], top_n=0, **kwargs):
 #     #     os._exit(9)
 
 
+@timed()
 @lru_cache()
-@file_cache()
+#@file_cache()
 def estimate_score(version):
     # blk_list = get_blocks()
     # blk_list = blk_list.loc[blk_list.wtid == 1]
@@ -599,7 +600,7 @@ def get_args_all(col_name):
 @timed()
 def get_args_transfer(bin_id, col_name):
     arg_list = []
-    file_list = ['v1.h5', 'v3.h5', 'lr_bin_9.h5']
+    file_list = ['v1.h5', 'v3.h5', 'lr_bin_9.h5', 'v3.9_train_val.h5']
     for file in file_list:
         tmp_score = pd.read_hdf(f'./imp/{file}')
         transfer_args =  tmp_score[ tmp_score.bin_id.isin([bin_id-1, bin_id, bin_id+1])
@@ -838,13 +839,8 @@ def get_best_para(gp_name, col_name, bin_id, top_n=0, **kwargs):
 
 
 
-# if __name__ == '__main__':
-#     args = check_options()
-#     logger.info(f'Program with:{args} ')
-#
-#     check_score_all()
-
-    """
-    python ./core/check.py -L  --bin_count 9 --gp_name lr_bin_9  > check1.log 2>&1 &
-    python ./core/check.py -L  --bin_count 9 --gp_name lr_bin_9  --dynamic > check1.log 2>&1 &
-    """
+if __name__ == '__main__':
+    score = estimate_score(3)
+    best_arg = './imp/best_arg.h5'
+    score.to_hdf(best_arg, 'best')
+    logger.debug(f'Best args save in folder {best_arg}')

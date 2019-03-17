@@ -6,7 +6,7 @@ from core.merge_multiple_file import *
 from core.check import check_options
 
 
-model_file = 'v3.9_val.h5'
+model_file = 'best_arg.h5'
 
 
 #0.63992780000
@@ -109,7 +109,7 @@ def gen_best(count_columns):
                 arg_list.append(best)
 
     logger.info(f'There are {len(arg_list)} blockid need to process')
-    pool = ThreadPool(10)
+    pool = ThreadPool(thred_num)
     pool.map(gen_best_sub, arg_list, chunksize=np.random.randint(1,64))
 
 def get_existing_blks():
@@ -140,7 +140,7 @@ if __name__ == '__main__':
         gen_best(count_columns)
     else:
         logger.info('======Reuse existing file')
-    merge_file(top_n=count_columns)
+    merge_file(base_file='./input/submit_example.csv', top_n=count_columns)
     #merge_diff_col()
 
 

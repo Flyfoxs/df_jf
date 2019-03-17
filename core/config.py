@@ -4,6 +4,9 @@ vector_size=200
 from file_cache.utils.util_log import *
 import numpy as np
 
+mysql_pass = 'Had00p!!'
+redis_pass = 'cisco2016redis'
+
 cache_size = 64
 count_wtid = 34 # file_count + 1
 thred_num = 12
@@ -104,6 +107,9 @@ factory = RedLockFactory(
         #{'host': '10.224.38.43','port': 8690, 'db': 13, 'password':redis_pass },
 
     ])
+
+
+
 
 
 try:

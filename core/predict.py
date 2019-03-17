@@ -229,9 +229,9 @@ def estimate_arg(miss_block_id, arg_df):
 @timed()
 def gen_best_sub(best_arg):
 
-    lock_mins = 5
-    try:
-        with factory.create_lock(str(best_arg.blk_id), ttl=1000*60 *lock_mins):
+    # lock_mins = 5
+    # try:
+    #     with factory.create_lock(str(best_arg.blk_id), ttl=1000*60 *lock_mins):
             miss_block_id=best_arg.blk_id
             cur_block = get_blocks().loc[best_arg.blk_id]
 
@@ -283,9 +283,9 @@ def gen_best_sub(best_arg):
             logger.info(f'Result will save to:{file_csv}')
             predict_res.to_csv(file_csv)
             return score_avg
-    except RedLockError as e:
-        logger.info(f'Not get the lock for :{str(best_arg.blk_id)}')
-        return 'No Lock'
+    # except RedLockError as e:
+    #     logger.info(f'Not get the lock for :{str(best_arg.blk_id)}')
+    #     return 'No Lock'
 
 
 @timed()

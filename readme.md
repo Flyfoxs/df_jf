@@ -3,16 +3,21 @@
 
 密码及环境配置的修改在config.py中  
     
-- edis: 提供分布式锁,这样可以多台主机并行训练
+- Redis: 提供分布式锁,这样可以多台主机并行训练
 
 密码及环境配置的修改在config.py中 
 
-## Training (耗时比较久,并且依赖集群可以跳过,直接使用训练好的模型:./imp/best_arg.h5)
+## Training(可以跳过,直接使用training好的模型:./imp/best_arg.h5)
+耗时比较久,并且依赖mysql和Redis.
+如果需要重新训练模型,可以删除此文件即可.(但是在比较好的服务器上面, 可能也需要训练1天以上)
 
 nohup ./bin/main.sh &
 
-## Prediction (因为模型已经预训练过了,可以不用Training,直接predict)
+## Prediction 
+因为模型已经预训练过了, 可以不用Training,直接predict
+
 nohup ./bin/predict.sh &
+
 预测文件最终输出到./output中
 
 
@@ -44,9 +49,9 @@ nohup ./bin/predict.sh &
 
 ### 超参
 
-只有一个超参数,就是如何对测试数据分组,目前只设置了,按照缺失块的大小分为9组.
+只有一个超参数,就是如何对测试数据分组,目前只尝试了按照缺失块的大小分为9组.
 具体的分组方法,可参考:check.get_miss_blocks_ex
-还可以根据时间来分组, 或者同事根据大小和时间分组,由于时间有限,没有一一参数.
+还可以根据时间来分组, 或者同时根据缺少数据块大小和时间分组, 由于时间有限, 没有一一尝试.
 
 
 ## 代码结构
@@ -82,10 +87,15 @@ nohup ./bin/predict.sh &
     ├── requirements.txt
 
  
-## 备注
-
+## 其他
+- 本模型只测试了68列中的37列
 根据和队友共同分析,最终发现本模型对其中37个列比较友好.
 具体37个列的list保存在merge_multiple_file.config变量中
+
+- 以上所有代码, 对内存有较高要求, 在700G的服务器上训练通过, 但是得到模型后的预测一般的主机即可.
+
+- 如果性能好的机器, 可以适量加大线程数量. (./core/config_local.py#thred_num)
+
 
 
     

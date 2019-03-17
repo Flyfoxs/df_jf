@@ -15,6 +15,7 @@ momenta_impact	DECIMAL(6,4),
 drop_threshold	DECIMAL(6,4),
 related_col_count	int,
 score	DECIMAL(8,4),
+score_val DECIMAL(8,6)
 score_count	int,
 score_total	DECIMAL(8,2),
 time_sn	int,
@@ -26,8 +27,10 @@ time_begin int,
 time_end int,
 length int,
 shift int,
+col_per DECIMAL(8,4),
 version varchar(16),
-ct     TIMESTAMP DEFAULT NOW()
+ct     TIMESTAMP DEFAULT NOW(),
+mt TIMESTAMP DEFAULT  now();
 );
 
 CREATE INDEX blk_id_index
@@ -51,3 +54,7 @@ ON score_list (col_name, bin_id);
 
 CREATE INDEX ct_index
 ON score_list (ct);
+
+
+
+alter table score_list add score_val DECIMAL(8,6) default 0;

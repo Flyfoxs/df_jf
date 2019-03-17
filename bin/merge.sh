@@ -6,6 +6,6 @@
 
 
 
-rm -rf ./output/blocks/*.csv
+#rm -rf ./output/blocks/*.csv
 
 python ./core/merge.py > merge.log 2>&1
