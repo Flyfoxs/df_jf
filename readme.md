@@ -20,11 +20,11 @@
         
 大量特征即使跨风机也具有很强相关性, 通过关联不同文件的数据构造特征, 下图就是挑选的有代表性的多列
 
-![image](http://github.com/Flyfoxs/df_jf/raw/master/img/1.png)
+![image](https://github.com/Flyfoxs/df_jf/raw/master/img/1.png)
 
-![image](http://github.com/Flyfoxs/df_jf/raw/master/img/2.png)
+![image](https://github.com/Flyfoxs/df_jf/raw/master/img/2.png)
 
-![image](http://github.com/Flyfoxs/df_jf/raw/master/img/3.png)
+![image](https://github.com/Flyfoxs/df_jf/raw/master/img/3.png)
 
 2. 难点2:
             
@@ -37,7 +37,7 @@
 - 建立缺失数据字典,对每一个连续的数据块和缺失块,存储起始地址.
 - 在缺失块对应的数据块,前后都可以找到和缺失块一样大小的块来模拟缺失块,这样隐含参数也基本一致.
 
-![image](http://github.com/Flyfoxs/df_jf/raw/master/img/9.png)
+![image](https://github.com/Flyfoxs/df_jf/raw/master/img/9.png)
             
        
 
