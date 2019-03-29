@@ -14,3 +14,6 @@ rsync -av --exclude-from './bin/exclude.txt' $(pwd) hdpsbp@sbpmed-prd0"$1":/appd
 
 date
 
+
+
+#rsync -av  hdpsbp@sbpmed-prd03:/appdata/felix/df_jf/output/*.csv   ./output/

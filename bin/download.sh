@@ -5,6 +5,9 @@ cd ..
 date
 #rsync -av  hdpsbp@ai-prd-07:/users/hdpsbp/bk/df_jf/cache ./
 
+
+rsync -av  hdpsbp@ai-prd-05:/users/hdpsbp/felix/df_jf/output/*29152*v3.9_train*.csv ./output/
+
 rsync -av  hdpsbp@ai-prd-05:/users/hdpsbp/felix/df_jf/cache/*template*  ./cache/
 
 rsync -av  hdpsbp@ai-prd-05:/users/hdpsbp/felix/df_jf/cache/*block*  ./cache/

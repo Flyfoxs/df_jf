@@ -4,7 +4,7 @@ from core.predict import *
 from core.merge_multiple_file import *
 
 from core.check import check_options
-
+import ntpath
 
 model_file = 'best_arg.h5'
 
@@ -66,7 +66,7 @@ def merge_file(base_file = './output/good_luck.csv', top_n=5, fillzero=True):
 
     base_df = convert_enum(base_df)
 
-    file = f"{base_file}_remote_{file_sn}_{top_n}_{len(select_col)}_{'_'.join(select_col[-3:])}_{int(time.time() % 10000000)}_{model_file}.csv"
+    file = f"./output/{ntpath.basename(base_file)}_remote_{file_sn}_{top_n}_{len(select_col)}_{'_'.join(select_col[-3:])}_{int(time.time() % 10000000)}_{model_file}.csv"
     base_df.iloc[:, :70].to_csv(file, index=None)
     logger.info(f'Merge file save to:{file}')
     return base_df.iloc[:, :70]
@@ -117,7 +117,7 @@ def get_existing_blks():
     file_list = sorted(file_list)
     file_map = DefaultMunch(0)
     for file_path in file_list:
-        import ntpath
+
         file_name = ntpath.basename(file_path)
         blk_id = int(file_name.split('_')[1])
         file_map[blk_id] = file_map[blk_id] +1

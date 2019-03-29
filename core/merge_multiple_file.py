@@ -11,7 +11,6 @@ new_file = '0.70180553000.csv_04_var037_var062_var012.csv'
 new_file = 'merge_m0_3152_4_var067_var037_var062_var012.csv'
 new_file = '0.67950475000.csv'
 new_file = 'good_luck.csv_remote_29152_100_37_var036_var019_var065_2648632_v3.9_train_val.h5.csv'
-new_file = 'good_luck.csv_remote_29152_100_37_var036_var019_var065_2657690_v3.9_val.h5.csv'
 config={
     # 'var067':[('merge_4_var062_var012.csv',1)],
     # 'var037':[('merge_4_var062_var012.csv',1)],
@@ -135,7 +134,7 @@ def merge_2_file(col_list,
         other_col = ['var053', 'var066', 'var016', 'var020', 'var047']
         print(f'Set some col({len(other_col)}) to Null:{other_col}')
         base.loc[:, other_col] = -1
-    logger.info(f'new file:{replace_file}')
+    logger.info('new file:{replace_file}')
     new = pd.read_csv(replace_file)
     print(new.loc[201262, 'var048'])
     print(base.loc[201262, 'var048'])
@@ -146,7 +145,7 @@ def merge_2_file(col_list,
     file_name = ntpath.basename(base_file)
 
     logger.info(f'Merge col_list {len(col_list)}:{col_list}')
-    file_name = f"./output/{file_name}_zero_{fillzero}_15_val_{len(col_list):02}_{'_'.join(col_list[-2:])}.csv"
+    file_name = f"./output/{file_name}_zero_{fillzero}_14_v2_{len(col_list):02}_{'_'.join(col_list[-2:])}.csv"
     base = convert_enum(base)
     base.to_csv(file_name, index=None)
     logger.info(f'File save to {file_name}')
@@ -191,7 +190,7 @@ if __name__ == '__main__':
     #merge_diff_col(fillzero=True)
 
     merge_2_file(select_col[:6],   fillzero=True)
-    merge_2_file(select_col[-31:], fillzero=True)
+    #merge_2_file(select_col[-31:], fillzero=True)
     # merge_2_file(select_col,       fillzero=True)
 
 

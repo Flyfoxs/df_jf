@@ -37,7 +37,7 @@ def get_session():
         'host': 'vm-ai-2.cisco.com',
         #'port': 3306,
         'user': 'ai_lab',
-        'password': 'Had00p!!',
+        'password': mysql_pass,
         'schema': 'ai'
     })
 

@@ -26,7 +26,7 @@ score
 #input
 **/*.csv
 **/Tencent*
-**/config_local.py
+**/config*.py
 
 **/*remote.ipynb
 

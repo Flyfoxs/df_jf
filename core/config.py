@@ -4,8 +4,8 @@ vector_size=200
 from file_cache.utils.util_log import *
 import numpy as np
 
-mysql_pass = 'Had00p!!'
-redis_pass = 'cisco2016redis'
+mysql_pass = 'xxxx'
+redis_pass = 'xxxx'
 
 cache_size = 64
 count_wtid = 34 # file_count + 1
@@ -98,7 +98,6 @@ date_type={
 
 }
 
-from core.security import redis_pass
 from redlock import RedLockFactory
 factory = RedLockFactory(
     connection_details=[
